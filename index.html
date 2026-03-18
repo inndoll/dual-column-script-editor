@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>雙欄式影片腳本編輯器</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans TC','Microsoft JhengHei','PingFang TC',sans-serif;background:#f0efe9;color:#1a1a1a;font-size:14px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── 工具列 ── */
+.toolbar{background:#fff;border-bottom:1px solid #e0e0e0;padding:6px 14px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.06);z-index:100}
+.toolbar-sep{width:1px;height:20px;background:#ddd;margin:0 2px;flex-shrink:0}
+.toolbar-title{font-weight:700;font-size:14px;color:#333;margin-right:4px;white-space:nowrap;letter-spacing:-0.3px}
+button{font-family:inherit;cursor:pointer;border:1px solid #ccc;background:#fff;color:#1a1a1a;border-radius:6px;padding:4px 9px;font-size:12px;transition:background 0.12s,border-color 0.12s;white-space:nowrap}
+button:hover{background:#f0f0f0}
+button.danger{border-color:#E24B4A;color:#E24B4A}
+button.danger:hover{background:#fff0f0}
+button.primary{background:#185FA5;color:#fff;border-color:#185FA5}
+button.primary:hover{background:#0C447C}
+button.active-panel{background:#eef2f8;border-color:#185FA5;color:#185FA5;font-weight:600}
+
+/* ── 文件資訊列 ── */
+.meta-bar{background:#fff;border-bottom:1px solid #e0e0e0;padding:7px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;flex-shrink:0}
+.meta-field label{font-size:10px;color:#999;margin-bottom:2px;display:block;font-weight:600;text-transform:uppercase;letter-spacing:0.4px}
+input[type=text]{font-family:inherit;font-size:12px;border:1px solid #ddd;border-radius:5px;padding:4px 7px;background:#fff;color:#1a1a1a;width:100%}
+input[type=text]:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95,165,0.1)}
+
+/* ── 設定列（進階功能開關）── */
+.settings-bar{background:#f8f8f5;border-bottom:1px solid #e8e8e0;padding:6px 14px;display:flex;gap:16px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+.settings-bar.hidden{display:none}
+.settings-group{display:flex;align-items:center;gap:8px;font-size:12px;color:#555}
+.settings-group label{display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:#444;user-select:none}
+.settings-group input[type=checkbox]{width:13px;height:13px;cursor:pointer;accent-color:#185FA5}
+.settings-sep{width:1px;height:16px;background:#ddd}
+.total-duration{font-size:12px;font-weight:600;color:#185FA5;background:#eef2f8;border:1px solid #c5d8f5;border-radius:5px;padding:3px 9px;margin-left:auto}
+
+/* ── 鏡頭語言快捷列 ── */
+.shot-shortcuts{background:#fafaf7;border-bottom:1px solid #ebebdf;padding:5px 14px;display:flex;gap:4px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+.shot-shortcuts.hidden{display:none}
+.shot-btn{font-size:11px;font-family:'Courier New',monospace;font-weight:700;padding:3px 8px;background:#fff;border:1px solid #d0d0c0;color:#445;border-radius:4px;letter-spacing:0.3px}
+.shot-btn:hover{background:#185FA5;color:#fff;border-color:#185FA5}
+.shot-label{font-size:11px;color:#aaa;margin-right:4px;flex-shrink:0}
+
+/* ── 3欄布局 ── */
+.workspace{display:flex;flex:1;overflow:hidden}
+
+/* ── 側邊欄 ── */
+.sidebar{width:300px;min-width:260px;max-width:440px;background:#fff;border-right:1px solid #e0e0e0;display:flex;flex-direction:column;flex-shrink:0;transition:width 0.2s,min-width 0.2s;overflow:hidden}
+.sidebar.collapsed{width:0;min-width:0}
+.sidebar-tabs{display:flex;border-bottom:1px solid #e0e0e0;flex-shrink:0;background:#fafafa}
+.s-tab{flex:1;border:none;background:none;padding:9px 6px;font-size:12px;font-weight:500;color:#888;cursor:pointer;border-bottom:2px solid transparent;transition:color 0.12s}
+.s-tab.active{color:#185FA5;border-bottom-color:#185FA5;background:#fff;font-weight:600}
+.s-tab:hover:not(.active){color:#333}
+.sidebar-panel{flex:1;overflow-y:auto;display:none;flex-direction:column}
+.sidebar-panel.active{display:flex}
+.ref-upload-zone{margin:10px;border:1.5px dashed #c5d8f5;border-radius:8px;padding:14px 10px;text-align:center;background:#f8faff;cursor:pointer;transition:border-color 0.15s,background 0.15s;flex-shrink:0}
+.ref-upload-zone:hover,.ref-upload-zone.drag-over{border-color:#185FA5;background:#eef3fc}
+.ref-upload-zone p{font-size:11px;color:#888;line-height:1.7;pointer-events:none}
+.ref-upload-zone strong{color:#185FA5;font-size:12px}
+.ref-upload-zone input{display:none}
+.ref-list{padding:0 10px 10px;display:flex;flex-direction:column;gap:7px;flex:1}
+.ref-item{border:1px solid #e8e8e8;border-radius:7px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+.ref-item-header{display:flex;align-items:center;gap:7px;padding:7px 9px;background:#f8f8f8;border-bottom:1px solid #eee;cursor:pointer;user-select:none}
+.ref-item-icon{font-size:15px;flex-shrink:0}
+.ref-item-name{font-size:12px;font-weight:500;color:#333;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ref-item-del{border:none;background:none;color:#bbb;font-size:13px;cursor:pointer;padding:0 2px;flex-shrink:0}
+.ref-item-del:hover{color:#E24B4A}
+.ref-item-body{display:none;padding:8px}
+.ref-item-body.open{display:block}
+.ref-img{width:100%;height:auto;border-radius:4px;display:block;max-height:380px;object-fit:contain;background:#f0f0f0;cursor:zoom-in}
+.ref-pdf-frame{width:100%;height:460px;border:none;border-radius:4px}
+.ref-text-pre{font-size:11px;line-height:1.7;color:#444;white-space:pre-wrap;word-break:break-all;max-height:280px;overflow-y:auto;background:#f8f8f8;padding:8px;border-radius:4px;font-family:'Courier New',monospace}
+.ref-empty{padding:20px;text-align:center;color:#bbb;font-size:12px;line-height:2}
+.note-toolbar{display:flex;gap:5px;padding:7px 10px;border-bottom:1px solid #eee;background:#fafafa;flex-wrap:wrap;flex-shrink:0}
+.note-fmt-btn{border:1px solid #ddd;background:#fff;color:#555;font-size:11px;padding:3px 7px;border-radius:4px;cursor:pointer;font-family:inherit}
+.note-fmt-btn:hover{background:#f0f0f0;border-color:#185FA5;color:#185FA5}
+.note-area{flex:1;overflow-y:auto;padding:10px}
+.note-ta{width:100%;height:100%;min-height:200px;border:none;resize:none;font-size:13px;line-height:1.8;color:#1a1a1a;background:transparent;outline:none;font-family:inherit}
+.note-tags-bar{padding:6px 10px;border-top:1px solid #eee;background:#fafafa;display:flex;gap:5px;flex-wrap:wrap;align-items:center;flex-shrink:0}
+.note-tag{font-size:11px;padding:2px 8px;border-radius:12px;background:#eef2f8;color:#185FA5;border:1px solid #c5d8f5;cursor:pointer;font-weight:500}
+.note-tag:hover{background:#dde8f8}
+.note-add-tag{font-size:11px;color:#999;border:1px dashed #ddd;background:transparent;padding:2px 8px;border-radius:12px;cursor:pointer}
+.note-add-tag:hover{color:#185FA5;border-color:#185FA5}
+.note-word-count{font-size:10px;color:#bbb;margin-left:auto;align-self:center}
+.resize-handle{width:4px;background:transparent;cursor:col-resize;flex-shrink:0;transition:background 0.15s}
+.resize-handle:hover{background:#c5d8f5}
+
+/* ── 主編輯區 ── */
+.editor-area{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.script-wrap{padding:14px 18px;max-width:1020px;margin:0 auto;width:100%}
+
+/* ── 腳本表格 ── */
+.script-table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #ddd;box-shadow:0 1px 6px rgba(0,0,0,0.06)}
+.script-table th{background:#eef2f8;padding:8px 10px;text-align:left;font-weight:600;font-size:12px;border-bottom:1px solid #ccd5e0;color:#445;white-space:nowrap}
+.script-table td{border:1px solid #e8e8e8;vertical-align:top;padding:0}
+.col-type{width:90px}
+.col-scene{width:60px}
+.col-shot{width:60px}
+.col-dur{width:60px}
+.col-num{width:32px}
+.col-act{width:30px}
+
+/* ── 列類型 ── */
+.type-sel{font-family:inherit;font-size:11px;border:none;background:transparent;color:#666;cursor:pointer;padding:5px 4px;width:100%;outline:none;font-weight:500}
+.type-sel:focus{background:#f8f8f8}
+/* 段落類型背景色 */
+tr.t-scene-cut{background:#f2f2f2}
+tr.t-key-shot{background:#fffde7}
+tr.t-sfx{background:#e8f4fd}
+tr.t-note{background:#f0faf0}
+tr.t-normal{background:#fff}
+/* 左側類型色條 */
+.type-indicator{width:3px;min-height:72px;display:block;border-radius:0}
+tr.t-scene-cut .type-indicator{background:#999}
+tr.t-key-shot .type-indicator{background:#f0b429}
+tr.t-sfx .type-indicator{background:#4db8e8}
+tr.t-note .type-indicator{background:#5cb85c}
+tr.t-normal .type-indicator{background:#e8e8e8}
+
+/* ── 小輸入欄（場次/鏡號/時間）── */
+.mini-input{font-family:inherit;font-size:12px;border:none;background:transparent;color:#333;padding:6px 6px;width:100%;outline:none;text-align:center}
+.mini-input:focus{background:#f8f0ff;border-radius:3px}
+.mini-input::placeholder{color:#ccc;font-size:11px}
+
+/* ── 主文字欄 ── */
+.cell-ta{width:100%;border:none;padding:7px 10px;font-size:14px;line-height:1.8;min-height:72px;background:transparent;color:#1a1a1a}
+.cell-ta:focus{outline:none;background:rgba(24,95,165,0.025)}
+.row-selected td{outline:2px solid rgba(24,95,165,0.15);outline-offset:-1px}
+.row-actions{background:#fafafa;border-left:1px solid #eee;text-align:center;vertical-align:top}
+.row-act-btn{display:block;width:100%;border:none;background:transparent;color:#ccc;font-size:11px;padding:3px 0;cursor:pointer;line-height:1.5}
+.row-act-btn:hover{color:#333;background:#f0f0f0}
+.row-act-btn.del:hover{color:#E24B4A;background:#fff0f0}
+.add-row-btn{margin-top:10px;font-size:12px}
+
+/* ── 隱藏欄 ── */
+.col-scene-th,.col-scene-td,.col-shot-th,.col-shot-td,.col-dur-th,.col-dur-td{display:none}
+.show-scene .col-scene-th,.show-scene .col-scene-td,
+.show-shot .col-shot-th,.show-shot .col-shot-td,
+.show-dur .col-dur-th,.show-dur .col-dur-td{display:table-cell}
+
+/* ── 提案模式列印 ── */
+.print-proposal .script-table{border:none;box-shadow:none}
+.print-proposal .script-table th,.print-proposal .script-table td{border:none;border-bottom:1px solid #eee}
+.print-proposal .cell-ta{font-size:15pt;line-height:2}
+.print-proposal .script-table th{background:#fff;font-size:14pt;padding:12px 14px;border-bottom:2px solid #333}
+
+/* ── 모달 ── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+.modal{background:#fff;border-radius:12px;padding:24px;max-width:760px;width:100%;border:1px solid #ddd;box-shadow:0 8px 32px rgba(0,0,0,0.15)}
+.modal h2{font-size:16px;font-weight:600;margin-bottom:16px;color:#1a1a1a}
+.modal-close{float:right;border:none;background:none;font-size:20px;cursor:pointer;color:#aaa;line-height:1}
+.modal-close:hover{color:#333}
+.import-tab{border:none;border-bottom:2px solid transparent;background:none;padding:7px 14px;font-size:13px;color:#888;cursor:pointer;border-radius:0;transition:color 0.12s}
+.import-tab.active{border-bottom:2px solid #185FA5;color:#185FA5;font-weight:600}
+.import-tab:hover:not(.active){color:#185FA5}
+.guide-section{margin-bottom:18px}
+.guide-section h3{font-size:13px;font-weight:600;color:#185FA5;margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid #e8eef6}
+.guide-section p,.guide-section li{font-size:13px;line-height:1.9;color:#555}
+.guide-section ul{padding-left:18px}
+.guide-section ul ul{margin-top:4px}
+.guide-section code{background:#f0f0f0;padding:1px 5px;border-radius:4px;font-family:monospace;font-size:12px;color:#c0392b}
+.template-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.info-box{background:#f0f5ff;border:1px solid #c5d8f5;border-radius:6px;padding:9px 11px;margin-bottom:11px;font-size:12px;color:#224;line-height:1.9}
+.warn-box{background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px 13px;font-size:13px;color:#7a5500;line-height:1.8}
+.preview-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+.preview-table th{padding:5px 8px;border:1px solid #ddd;background:#eef2f8;text-align:left;font-weight:600}
+.preview-table td{padding:5px 8px;border:1px solid #eee;vertical-align:top;white-space:pre-wrap;max-width:260px;word-break:break-all}
+textarea{font-family:inherit;font-size:13px;border:1px solid #ccc;border-radius:6px;padding:5px 8px;background:#fff;color:#1a1a1a;width:100%;resize:none;line-height:1.7}
+textarea:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95,165,0.1)}
+.export-mode-radio{display:flex;gap:16px;margin:10px 0 16px}
+.export-mode-radio label{display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:#333;padding:10px 14px;border:1px solid #ddd;border-radius:8px;flex:1;transition:border-color 0.12s}
+.export-mode-radio label:hover{border-color:#185FA5}
+.export-mode-radio input[type=radio]{margin-top:2px;accent-color:#185FA5;flex-shrink:0}
+.export-mode-radio label.selected{border-color:#185FA5;background:#f0f5ff}
+.export-col-checks{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 14px;font-size:13px}
+.export-col-checks label{display:flex;align-items:center;gap:5px;cursor:pointer}
+
+/* ── 狀態提示 ── */
+.status{position:fixed;bottom:16px;right:16px;background:#185FA5;color:#fff;padding:7px 14px;border-radius:8px;font-size:12px;z-index:300;opacity:0;transition:opacity 0.3s;pointer-events:none;box-shadow:0 4px 12px rgba(24,95,165,0.3)}
+.status.show{opacity:1}
+
+/* ── 列印 ── */
+@media print{
+  .toolbar,.meta-bar,.settings-bar,.shot-shortcuts,.row-actions,.status,.add-row-btn,.sidebar,.resize-handle{display:none!important}
+  body{height:auto;overflow:auto;background:#fff}
+  .workspace{display:block}
+  .editor-area{overflow:visible}
+  .script-wrap{padding:0;max-width:100%}
+  .script-table{border:1pt solid #888 !important;border-radius:0;box-shadow:none;page-break-inside:auto}
+  .script-table th{background:#e8e8e8!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:10pt}
+  .script-table tr{page-break-inside:avoid}
+  .cell-ta{font-size:10.5pt;min-height:unset;padding:6px 8px}
+  .mini-input{font-size:10pt;padding:4px 5px}
+  .type-sel{font-size:10pt}
+  .print-header{display:block!important;margin-bottom:12pt;font-size:9pt;padding-bottom:5pt;border-bottom:1pt solid #bbb;color:#333}
+  tr.t-scene-cut{background:#f0f0f0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  tr.t-key-shot{background:#fffde7!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  tr.t-sfx{background:#e8f4fd!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  tr.t-note{background:#f0faf0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  /* 提案版列印 */
+  body.print-proposal-mode .script-table{border:none!important}
+  body.print-proposal-mode .script-table th,
+  body.print-proposal-mode .script-table td{border:none!important;border-bottom:1pt solid #ddd!important}
+  body.print-proposal-mode .script-table th{font-size:13pt;padding:10pt 12pt;border-bottom:2pt solid #333!important}
+  body.print-proposal-mode .cell-ta{font-size:13pt;line-height:2.1;padding:10pt 12pt}
+  body.print-proposal-mode .mini-input{font-size:11pt}
+}
+.print-header{display:none}
+</style>
+</head>
+<body>
+
+<!-- 工具列 -->
+<div class="toolbar">
+  <span class="toolbar-title">🎬 腳本編輯器</span>
+  <div class="toolbar-sep"></div>
+  <button onclick="addRow()">＋ 新增列</button>
+  <button onclick="deleteSelectedRow()" class="danger">✕ 刪除</button>
+  <button onclick="moveSelectedRow(-1)">▲ 上移</button>
+  <button onclick="moveSelectedRow(1)">▼ 下移</button>
+  <div class="toolbar-sep"></div>
+  <button onclick="saveManual()">💾 儲存</button>
+  <button onclick="showImportModal()">📥 匯入</button>
+  <button onclick="exportJSON()">↓ JSON</button>
+  <div class="toolbar-sep"></div>
+  <button onclick="showExportModal('pdf')" class="primary">🖨 PDF</button>
+  <button id="btnWord" onclick="showExportModal('docx')" class="primary" disabled style="opacity:0.55;cursor:default" title="正在載入模組…">📄 Word 載入中…</button>
+  <div class="toolbar-sep"></div>
+  <button onclick="showGuide()">？ 指南</button>
+  <button onclick="showTemplates()">📋 範本</button>
+  <div class="toolbar-sep"></div>
+  <button id="btnSettings" onclick="toggleSettings()" title="欄位設定 / 鏡頭語言">⚙ 進階</button>
+  <button id="btnSidebar" onclick="toggleSidebar()" class="active-panel">◀ 側欄</button>
+</div>
+
+<!-- 文件資訊列 -->
+<div class="meta-bar" id="metaBar"></div>
+
+<!-- 設定列（預設隱藏）-->
+<div class="settings-bar hidden" id="settingsBar">
+  <div class="settings-group">
+    <strong style="font-size:11px;color:#888;margin-right:2px">欄位顯示：</strong>
+    <label><input type="checkbox" id="ckScene" onchange="toggleCol('scene',this.checked)"> 場次</label>
+    <label><input type="checkbox" id="ckShot" onchange="toggleCol('shot',this.checked)"> 鏡號</label>
+    <label><input type="checkbox" id="ckDur" onchange="toggleCol('dur',this.checked)"> 時間</label>
+    <label><input type="checkbox" id="ckType" onchange="toggleTypeCol(this.checked)"> 段落類型</label>
+  </div>
+  <div class="settings-sep"></div>
+  <div class="settings-group">
+    <strong style="font-size:11px;color:#888;margin-right:2px">鏡頭語言：</strong>
+    <label><input type="checkbox" id="ckShots" onchange="toggleShotBar(this.checked)"> 快捷按鈕</label>
+  </div>
+  <span class="total-duration" id="totalDuration" style="display:none">總時長：--</span>
+</div>
+
+<!-- 鏡頭語言快捷列（預設隱藏）-->
+<div class="shot-shortcuts hidden" id="shotBar">
+  <span class="shot-label">插入鏡頭：</span>
+  <button class="shot-btn" onclick="insertShot('ECU')">ECU</button>
+  <button class="shot-btn" onclick="insertShot('CU')">CU</button>
+  <button class="shot-btn" onclick="insertShot('MCU')">MCU</button>
+  <button class="shot-btn" onclick="insertShot('MS')">MS</button>
+  <button class="shot-btn" onclick="insertShot('WS')">WS</button>
+  <button class="shot-btn" onclick="insertShot('EWS')">EWS</button>
+  <button class="shot-btn" onclick="insertShot('PAN')">PAN</button>
+  <button class="shot-btn" onclick="insertShot('TILT')">TILT</button>
+  <button class="shot-btn" onclick="insertShot('DOLLY')">DOLLY</button>
+  <button class="shot-btn" onclick="insertShot('ZOOM IN')">ZOOM IN</button>
+  <button class="shot-btn" onclick="insertShot('ZOOM OUT')">ZOOM OUT</button>
+  <button class="shot-btn" onclick="insertShot('RACK FOCUS')">RACK FOCUS</button>
+  <button class="shot-btn" onclick="insertShot('HANDHELD')">HANDHELD</button>
+  <button class="shot-btn" onclick="insertShot('POV')">POV</button>
+  <button class="shot-btn" onclick="insertShot('OTS')">OTS</button>
+  <button class="shot-btn" onclick="insertShot('INSERT')">INSERT</button>
+  <button class="shot-btn" onclick="insertShot('CUTAWAY')">CUTAWAY</button>
+  <button class="shot-btn" onclick="insertShot('B-ROLL')">B-ROLL</button>
+</div>
+
+<!-- 主工作區 -->
+<div class="workspace">
+
+  <!-- 側邊欄 -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-tabs">
+      <button class="s-tab active" id="stab-ref" onclick="switchSTab('ref')">📎 參考資料</button>
+      <button class="s-tab" id="stab-note" onclick="switchSTab('note')">💡 靈感筆記</button>
+    </div>
+    <div class="sidebar-panel active" id="spanel-ref">
+      <div class="ref-upload-zone" id="refDropZone" onclick="document.getElementById('refFileInput').click()" ondragover="refDragOver(event)" ondragleave="refDragLeave(event)" ondrop="refDrop(event)">
+        <input type="file" id="refFileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.pdf,.txt,.md,.csv,.docx,.doc,.pptx,.xlsx,.mp4,.mov,.avi,.wmv" onchange="refFilesSelected(event)">
+        <strong>點擊上傳 或 拖曳檔案至此</strong>
+        <p>圖片（JPG/PNG/GIF/WebP/SVG）<br>PDF・Word・Excel・PPT・CSV・TXT<br>影片（MP4/MOV 顯示資訊）</p>
+      </div>
+      <div class="ref-list" id="refList">
+        <div class="ref-empty" id="refEmpty">尚未上傳任何參考資料<br>支援多種格式，可拖曳上傳</div>
+      </div>
+    </div>
+    <div class="sidebar-panel" id="spanel-note">
+      <div class="note-toolbar">
+        <button class="note-fmt-btn" onclick="noteInsert('## ')">H2</button>
+        <button class="note-fmt-btn" onclick="noteInsert('### ')">H3</button>
+        <button class="note-fmt-btn" onclick="noteWrap('**','**')"><b>B</b></button>
+        <button class="note-fmt-btn" onclick="noteWrap('_','_')"><i>I</i></button>
+        <button class="note-fmt-btn" onclick="noteInsert('- ')">• 列表</button>
+        <button class="note-fmt-btn" onclick="noteInsert('[ ] ')">☐ 待辦</button>
+        <button class="note-fmt-btn" onclick="noteInsert('---\n')">── 分隔</button>
+        <button class="note-fmt-btn danger" onclick="clearNote()" style="margin-left:auto">清空</button>
+      </div>
+      <div class="note-area"><textarea class="note-ta" id="noteTa" placeholder="💡 記錄靈感、客戶要求、待辦事項…&#10;&#10;## 核心訴求&#10;- 強調品牌溫度感&#10;&#10;[ ] 確認客戶 logo 規範" oninput="saveNote();updateNoteCount()"></textarea></div>
+      <div class="note-tags-bar">
+        <span style="font-size:11px;color:#aaa;flex-shrink:0">標籤：</span>
+        <div id="tagsList"></div>
+        <button class="note-add-tag" onclick="addNoteTag()">＋ 標籤</button>
+        <span class="note-word-count" id="noteWordCount">0 字</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="resize-handle" id="resizeHandle"></div>
+
+  <!-- 主編輯區 -->
+  <div class="editor-area">
+    <div class="script-wrap">
+      <div class="print-header" id="printHeader"></div>
+      <table class="script-table" id="mainTable">
+        <thead id="scriptHead"></thead>
+        <tbody id="scriptBody"></tbody>
+      </table>
+      <button class="add-row-btn" onclick="addRow()">＋ 新增列</button>
+    </div>
+  </div>
+</div>
+
+<div class="status" id="status"></div>
+<div id="modalContainer"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// 全域狀態
+// ════════════════════════════════════════════════════════════
+var scriptDoc={
+  title:'',project:'',author:'',version:'v1.0',
+  date:new Date().toLocaleDateString('zh-TW'),notes:'',
+  rows:[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]
+};
+// 顯示設定（預設全關）
+var colSettings={scene:false,shot:false,dur:false,type:false,shotBar:false};
+var selectedRow=null;
+var lastFocusedLeftTA=null; // 最後聚焦的左欄 textarea（for 鏡頭語言插入）
+var pendingPasteRows=[],pendingDocxRows=[];
+var refItems=[],noteTags=[],sidebarOpen=true,DB=null;
+
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+// ════════════════════════════════════════════════════════════
+// IndexedDB
+// ════════════════════════════════════════════════════════════
+function initDB(){
+  return new Promise(function(res){
+    var req=indexedDB.open('tw_script_refs',1);
+    req.onupgradeneeded=function(e){e.target.result.createObjectStore('files',{keyPath:'id'});};
+    req.onsuccess=function(e){DB=e.target.result;res();};
+    req.onerror=function(){res();};
+  });
+}
+function dbSave(id,data){if(!DB)return;DB.transaction('files','readwrite').objectStore('files').put({id:id,data:data});}
+function dbGet(id){return new Promise(function(res){if(!DB){res(null);return;}var r=DB.transaction('files','readonly').objectStore('files').get(id);r.onsuccess=function(e){res(e.target.result?e.target.result.data:null);};r.onerror=function(){res(null);};});}
+function dbDelete(id){if(!DB)return;DB.transaction('files','readwrite').objectStore('files').delete(id);}
+
+// ════════════════════════════════════════════════════════════
+// 儲存 / 載入
+// ════════════════════════════════════════════════════════════
+function loadDoc(){
+  try{
+    var s=localStorage.getItem('tw_script_doc');
+    if(s){var d=JSON.parse(s);if(d&&d.rows){
+      // 補齊舊資料缺失欄位
+      d.rows=d.rows.map(function(r){
+        return Object.assign({type:'normal',scene:'',shot:'',duration:''},r);
+      });
+      scriptDoc=d;
+    }}
+  }catch(e){}
+  try{
+    var cs=localStorage.getItem('tw_col_settings');
+    if(cs)colSettings=Object.assign(colSettings,JSON.parse(cs));
+  }catch(e){}
+}
+function saveDoc(){localStorage.setItem('tw_script_doc',JSON.stringify(scriptDoc));showStatus('已自動儲存');}
+function saveColSettings(){localStorage.setItem('tw_col_settings',JSON.stringify(colSettings));}
+function saveManual(){saveDoc();showStatus('已儲存 ✓',1000);}
+
+function loadRefMeta(){try{var s=localStorage.getItem('tw_ref_meta');if(s)refItems=JSON.parse(s)||[];}catch(e){}}
+function saveRefMeta(){localStorage.setItem('tw_ref_meta',JSON.stringify(refItems.map(function(r){return{id:r.id,name:r.name,type:r.type,size:r.size,mime:r.mime,expanded:r.expanded};})));}
+function loadNote(){
+  var n=localStorage.getItem('tw_note')||'';
+  var tags=localStorage.getItem('tw_note_tags');
+  try{noteTags=tags?JSON.parse(tags):[];}catch(e){noteTags=[];}
+  document.getElementById('noteTa').value=n;updateNoteCount();renderTags();
+}
+function saveNote(){localStorage.setItem('tw_note',document.getElementById('noteTa').value);}
+function updateNoteCount(){var v=document.getElementById('noteTa').value;document.getElementById('noteWordCount').textContent=v.replace(/\s/g,'').length+' 字';}
+
+function showStatus(msg,d){d=d||1400;var s=document.getElementById('status');s.textContent=msg;s.classList.add('show');clearTimeout(s._t);s._t=setTimeout(function(){s.classList.remove('show');},d);}
+
+// ════════════════════════════════════════════════════════════
+// 設定列 / 欄位開關
+// ════════════════════════════════════════════════════════════
+var settingsOpen=false;
+function toggleSettings(){
+  settingsOpen=!settingsOpen;
+  document.getElementById('settingsBar').classList.toggle('hidden',!settingsOpen);
+  document.getElementById('btnSettings').classList.toggle('active-panel',settingsOpen);
+}
+
+function applyColSettings(){
+  var tbl=document.getElementById('mainTable');
+  tbl.classList.toggle('show-scene',colSettings.scene);
+  tbl.classList.toggle('show-shot',colSettings.shot);
+  tbl.classList.toggle('show-dur',colSettings.dur);
+  // 段落類型欄
+  document.querySelectorAll('.col-type-td,.col-type-th').forEach(function(el){
+    el.style.display=colSettings.type?'':'none';
+  });
+  // 總時長顯示
+  var td=document.getElementById('totalDuration');
+  if(td)td.style.display=colSettings.dur?'inline-block':'none';
+  if(colSettings.dur)updateTotalDuration();
+  // 設定列 checkbox 同步
+  var ckScene=document.getElementById('ckScene');if(ckScene)ckScene.checked=colSettings.scene;
+  var ckShot=document.getElementById('ckShot');if(ckShot)ckShot.checked=colSettings.shot;
+  var ckDur=document.getElementById('ckDur');if(ckDur)ckDur.checked=colSettings.dur;
+  var ckType=document.getElementById('ckType');if(ckType)ckType.checked=colSettings.type;
+  var ckShots=document.getElementById('ckShots');if(ckShots)ckShots.checked=colSettings.shotBar;
+}
+
+function toggleCol(col,val){
+  colSettings[col]=val;
+  saveColSettings();
+  applyColSettings();
+}
+function toggleTypeCol(val){
+  colSettings.type=val;
+  saveColSettings();
+  applyColSettings();
+}
+function toggleShotBar(val){
+  colSettings.shotBar=val;
+  document.getElementById('shotBar').classList.toggle('hidden',!val);
+  saveColSettings();
+}
+
+// ════════════════════════════════════════════════════════════
+// 總時長計算
+// ════════════════════════════════════════════════════════════
+function parseDuration(s){
+  s=String(s||'').trim();
+  if(!s)return 0;
+  // 支援：3 / 3s / 00:03 / 1:30
+  if(/^\d+$/.test(s))return parseInt(s,10);
+  if(/^\d+s$/i.test(s))return parseInt(s,10);
+  var mm=s.match(/^(\d+):(\d+)$/);
+  if(mm)return parseInt(mm[1],10)*60+parseInt(mm[2],10);
+  return 0;
+}
+function formatDuration(sec){
+  if(!sec)return '00:00';
+  var m=Math.floor(sec/60),s=sec%60;
+  return (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+}
+function updateTotalDuration(){
+  var total=0;
+  scriptDoc.rows.forEach(function(r){total+=parseDuration(r.duration);});
+  var el=document.getElementById('totalDuration');
+  if(el)el.textContent='總時長：'+formatDuration(total)+(total?' ('+total+'s)':'');
+}
+
+// ════════════════════════════════════════════════════════════
+// 文件資訊列
+// ════════════════════════════════════════════════════════════
+function renderMeta(){
+  var mb=document.getElementById('metaBar');
+  var fields=[
+    {k:'title',l:'腳本標題',ph:'輸入標題…'},
+    {k:'project',l:'專案名稱',ph:'專案名稱…'},
+    {k:'author',l:'作者',ph:'姓名…'},
+    {k:'version',l:'版本',ph:'v1.0'},
+    {k:'date',l:'日期',ph:'日期…'},
+    {k:'notes',l:'備註',ph:'備註…'}
+  ];
+  mb.innerHTML=fields.map(function(f){
+    return '<div class="meta-field"><label>'+f.l+'</label><input type="text" value="'+escHtml(scriptDoc[f.k]||'')+'" placeholder="'+f.ph+'" data-key="'+f.k+'" oninput="updateMeta(this)"></div>';
+  }).join('');
+}
+function updateMeta(el){scriptDoc[el.dataset.key]=el.value;saveDoc();}
+
+// ════════════════════════════════════════════════════════════
+// 腳本表頭渲染
+// ════════════════════════════════════════════════════════════
+var ROW_TYPES=[
+  {v:'normal',l:'一般'},
+  {v:'scene-cut',l:'場景切換'},
+  {v:'key-shot',l:'重點鏡頭'},
+  {v:'sfx',l:'音效提示'},
+  {v:'note',l:'備註'}
+];
+
+function renderHead(){
+  document.getElementById('scriptHead').innerHTML=
+    '<tr>'+
+    '<th class="col-num">#</th>'+
+    '<th class="col-type-th" style="'+(colSettings.type?'':'display:none')+';width:88px">類型</th>'+
+    '<th class="col-scene-th" style="width:58px">場次</th>'+
+    '<th class="col-shot-th" style="width:58px">鏡號</th>'+
+    '<th class="col-dur-th" style="width:58px">時間</th>'+
+    '<th style="width:55%">畫面</th>'+
+    '<th style="width:45%">聲音</th>'+
+    '<th class="col-act" style="width:30px"></th>'+
+    '</tr>';
+}
+
+// ════════════════════════════════════════════════════════════
+// 腳本主體渲染
+// ════════════════════════════════════════════════════════════
+function renderBody(){
+  var tbody=document.getElementById('scriptBody');
+  tbody.innerHTML='';
+  scriptDoc.rows.forEach(function(row,i){buildRow(row,i,tbody);});
+  applyColSettings();
+  if(colSettings.dur)updateTotalDuration();
+}
+
+function buildRow(row,i,tbody){
+  var tr=document.createElement('tr');
+  tr.dataset.id=row.id;
+  tr.className='t-'+(row.type||'normal');
+  if(selectedRow===row.id)tr.classList.add('row-selected');
+
+  // 段落類型 dropdown
+  var typeOpts=ROW_TYPES.map(function(t){
+    return '<option value="'+t.v+'"'+(row.type===t.v?' selected':'')+'>'+t.l+'</option>';
+  }).join('');
+
+  tr.innerHTML=
+    '<td class="col-num" style="text-align:center;font-size:11px;color:#bbb;padding:6px 4px;vertical-align:top">'+(i+1)+'</td>'+
+    '<td class="col-type-td" style="'+(colSettings.type?'':'display:none')+';vertical-align:top;padding:0">'+
+      '<select class="type-sel" data-id="'+row.id+'" onchange="updateRowType(this)">'+typeOpts+'</select>'+
+    '</td>'+
+    '<td class="col-scene-td" style="vertical-align:top;padding:0"><input class="mini-input" data-id="'+row.id+'" data-field="scene" value="'+escHtml(row.scene||'')+'" placeholder="S1" oninput="updateRowField(this)"></td>'+
+    '<td class="col-shot-td" style="vertical-align:top;padding:0"><input class="mini-input" data-id="'+row.id+'" data-field="shot" value="'+escHtml(row.shot||'')+'" placeholder="01" oninput="updateRowField(this)"></td>'+
+    '<td class="col-dur-td" style="vertical-align:top;padding:0"><input class="mini-input" data-id="'+row.id+'" data-field="duration" value="'+escHtml(row.duration||'')+'" placeholder="3s" oninput="updateRowField(this);updateTotalDuration()"></td>'+
+    '<td style="vertical-align:top;padding:0">'+
+      '<textarea class="cell-ta" data-id="'+row.id+'" data-side="left" rows="3" placeholder="畫面說明、場景、鏡頭…">'+escHtml(row.left||'')+'</textarea>'+
+    '</td>'+
+    '<td style="vertical-align:top;padding:0">'+
+      '<textarea class="cell-ta" data-id="'+row.id+'" data-side="right" rows="3" placeholder="旁白、台詞、音效、音樂…">'+escHtml(row.right||'')+'</textarea>'+
+    '</td>'+
+    '<td class="row-actions" style="width:30px">'+
+      '<button class="row-act-btn" onclick="moveRow(\''+row.id+'\',-1)" title="上移">▲</button>'+
+      '<button class="row-act-btn" onclick="moveRow(\''+row.id+'\',1)" title="下移">▼</button>'+
+      '<button class="row-act-btn" onclick="copyRow(\''+row.id+'\')" title="複製">⧉</button>'+
+      '<button class="row-act-btn del" onclick="deleteRow(\''+row.id+'\')" title="刪除">✕</button>'+
+    '</td>';
+  tbody.appendChild(tr);
+
+  // textarea 事件
+  tr.querySelectorAll('textarea.cell-ta').forEach(function(ta){
+    autoResize(ta);
+    ta.addEventListener('input',function(){
+      var r=scriptDoc.rows.find(function(r){return r.id===ta.dataset.id;});
+      if(r){r[ta.dataset.side==='left'?'left':'right']=ta.value;autoResize(ta);saveDoc();}
+    });
+    ta.addEventListener('keydown',function(e){
+      var idx=scriptDoc.rows.findIndex(function(r){return r.id===ta.dataset.id;});
+      if(e.key==='Enter'&&!e.shiftKey){
+        e.preventDefault();
+        if(ta.dataset.side==='left'){var rt=tr.querySelectorAll('textarea')[1];if(rt)rt.focus();}
+        else{addRowAfter(idx);setTimeout(function(){var rows=document.querySelectorAll('.cell-ta[data-side="left"]');if(rows[idx+1])rows[idx+1].focus();},50);}
+      }
+      if(e.key==='Tab'){
+        e.preventDefault();
+        if(ta.dataset.side==='left'){var rt=tr.querySelectorAll('textarea')[1];if(rt)rt.focus();}
+        else{var next=document.querySelectorAll('.cell-ta[data-side="left"]')[idx+1];if(next)next.focus();}
+      }
+    });
+    ta.addEventListener('focus',function(){
+      selectedRow=ta.dataset.id;renderHighlight();
+      if(ta.dataset.side==='left')lastFocusedLeftTA=ta;
+    });
+  });
+}
+
+function renderHighlight(){document.querySelectorAll('tr[data-id]').forEach(function(tr){tr.classList.toggle('row-selected',tr.dataset.id===selectedRow);});}
+function autoResize(ta){ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';}
+
+function updateRowType(sel){
+  var r=scriptDoc.rows.find(function(r){return r.id===sel.dataset.id;});
+  if(!r)return;
+  r.type=sel.value;
+  var tr=sel.closest('tr');
+  if(tr){tr.className='t-'+r.type;if(selectedRow===r.id)tr.classList.add('row-selected');}
+  saveDoc();
+}
+function updateRowField(input){
+  var r=scriptDoc.rows.find(function(r){return r.id===input.dataset.id;});
+  if(r)r[input.dataset.field]=input.value;
+  saveDoc();
+}
+
+// ════════════════════════════════════════════════════════════
+// 鏡頭語言快捷插入
+// ════════════════════════════════════════════════════════════
+function insertShot(code){
+  var ta=lastFocusedLeftTA;
+  if(!ta){
+    // 找第一個可用的左欄 textarea
+    var all=document.querySelectorAll('.cell-ta[data-side="left"]');
+    if(all.length)ta=all[all.length-1];
+  }
+  if(!ta)return;
+  ta.focus();
+  var start=ta.selectionStart,end=ta.selectionEnd;
+  var val=ta.value;
+  // 若游標在行首或空行，直接插入；否則加到行末
+  var lineStart=val.lastIndexOf('\n',start-1)+1;
+  var lineContent=val.slice(lineStart,end).trim();
+  var insert=code+'：';
+  if(lineContent){
+    // 行有內容：換行後插入
+    insert='\n'+insert;
+    ta.value=val.slice(0,end)+insert+val.slice(end);
+    ta.selectionStart=ta.selectionEnd=end+insert.length;
+  } else {
+    ta.value=val.slice(0,lineStart)+insert+val.slice(end);
+    ta.selectionStart=ta.selectionEnd=lineStart+insert.length;
+  }
+  // 觸發 input 更新資料
+  var evt=new Event('input',{bubbles:true});
+  ta.dispatchEvent(evt);
+  autoResize(ta);
+  showStatus('插入 '+code,800);
+}
+
+// ════════════════════════════════════════════════════════════
+// 列操作
+// ════════════════════════════════════════════════════════════
+function addRow(){
+  scriptDoc.rows.push({id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''});
+  saveDoc();renderBody();
+  var tas=document.querySelectorAll('.cell-ta[data-side="left"]');
+  if(tas.length)tas[tas.length-1].focus();
+}
+function addRowAfter(idx){
+  scriptDoc.rows.splice(idx+1,0,{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''});
+  saveDoc();renderBody();
+}
+function deleteRow(id){
+  if(scriptDoc.rows.length<=1){showStatus('至少保留一列');return;}
+  scriptDoc.rows=scriptDoc.rows.filter(function(r){return r.id!==id;});
+  saveDoc();renderBody();
+}
+function moveRow(id,dir){
+  var i=scriptDoc.rows.findIndex(function(r){return r.id===id;});
+  var j=i+dir;if(j<0||j>=scriptDoc.rows.length)return;
+  var tmp=scriptDoc.rows[i];scriptDoc.rows[i]=scriptDoc.rows[j];scriptDoc.rows[j]=tmp;
+  saveDoc();renderBody();
+}
+function copyRow(id){
+  var i=scriptDoc.rows.findIndex(function(r){return r.id===id;});
+  scriptDoc.rows.splice(i+1,0,Object.assign({},scriptDoc.rows[i],{id:uid()}));
+  saveDoc();renderBody();
+}
+function deleteSelectedRow(){if(selectedRow)deleteRow(selectedRow);else showStatus('請先點選要刪除的列');}
+function moveSelectedRow(dir){if(selectedRow)moveRow(selectedRow,dir);else showStatus('請先點選要移動的列');}
+
+// ════════════════════════════════════════════════════════════
+// 側欄
+// ════════════════════════════════════════════════════════════
+function toggleSidebar(){
+  sidebarOpen=!sidebarOpen;
+  var sb=document.getElementById('sidebar');
+  var btn=document.getElementById('btnSidebar');
+  var rh=document.getElementById('resizeHandle');
+  sb.classList.toggle('collapsed',!sidebarOpen);
+  btn.textContent=sidebarOpen?'◀ 側欄':'▶ 側欄';
+  btn.classList.toggle('active-panel',sidebarOpen);
+  rh.style.display=sidebarOpen?'block':'none';
+}
+function switchSTab(tab){
+  ['ref','note'].forEach(function(t){
+    document.getElementById('stab-'+t).classList.toggle('active',t===tab);
+    document.getElementById('spanel-'+t).classList.toggle('active',t===tab);
+  });
+}
+(function(){
+  var startX=0,startW=0,sb=null;
+  document.addEventListener('DOMContentLoaded',function(){
+    var handle=document.getElementById('resizeHandle');
+    sb=document.getElementById('sidebar');
+    handle.addEventListener('mousedown',function(e){
+      startX=e.clientX;startW=sb.offsetWidth;
+      document.addEventListener('mousemove',onMove);
+      document.addEventListener('mouseup',onUp);
+      e.preventDefault();
+    });
+  });
+  function onMove(e){var w=Math.max(220,Math.min(500,startW+(e.clientX-startX)));sb.style.width=w+'px';sb.style.minWidth=w+'px';}
+  function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
+})();
+
+// ════════════════════════════════════════════════════════════
+// 參考資料
+// ════════════════════════════════════════════════════════════
+var FILE_ICONS={'image':'🖼','pdf':'📄','word':'📝','excel':'📊','ppt':'📑','text':'📃','csv':'📋','video':'🎬','audio':'🎵','unknown':'📎'};
+function getFileType(mime,name){
+  mime=mime||'';var ext=(name||'').split('.').pop().toLowerCase();
+  if(mime.startsWith('image/')||['jpg','jpeg','png','gif','webp','svg','bmp'].indexOf(ext)>=0)return 'image';
+  if(mime==='application/pdf'||ext==='pdf')return 'pdf';
+  if(['doc','docx'].indexOf(ext)>=0||mime.indexOf('wordprocessingml')>=0||mime.indexOf('msword')>=0)return 'word';
+  if(['xls','xlsx'].indexOf(ext)>=0||mime.indexOf('spreadsheetml')>=0)return 'excel';
+  if(['ppt','pptx'].indexOf(ext)>=0||mime.indexOf('presentationml')>=0)return 'ppt';
+  if(['mp4','mov','avi','wmv','mkv','webm'].indexOf(ext)>=0||mime.startsWith('video/'))return 'video';
+  if(['mp3','wav','aac','flac','ogg'].indexOf(ext)>=0||mime.startsWith('audio/'))return 'audio';
+  if(['txt','md','markdown'].indexOf(ext)>=0||mime.startsWith('text/'))return 'text';
+  if(ext==='csv')return 'csv';return 'unknown';
+}
+function formatBytes(n){if(n<1024)return n+'B';if(n<1048576)return (n/1024).toFixed(1)+'KB';return (n/1048576).toFixed(1)+'MB';}
+function refDragOver(e){e.preventDefault();document.getElementById('refDropZone').classList.add('drag-over');}
+function refDragLeave(){document.getElementById('refDropZone').classList.remove('drag-over');}
+function refDrop(e){e.preventDefault();document.getElementById('refDropZone').classList.remove('drag-over');processRefFiles(e.dataTransfer.files);}
+function refFilesSelected(e){processRefFiles(e.target.files);e.target.value='';}
+function processRefFiles(files){
+  if(!files||!files.length)return;
+  Array.from(files).forEach(function(file){
+    var id=uid(),type=getFileType(file.type,file.name);
+    var meta={id:id,name:file.name,type:type,size:file.size,mime:file.type,expanded:false};
+    var reader=new FileReader();
+    if(type==='image'||type==='pdf'){
+      reader.onload=function(e){dbSave(id,e.target.result);refItems.push(meta);saveRefMeta();renderRefList();showStatus('已加入：'+file.name);};
+      reader.readAsDataURL(file);
+    } else if(type==='text'||type==='csv'){
+      reader.onload=function(e){dbSave(id,e.target.result);refItems.push(meta);saveRefMeta();renderRefList();showStatus('已加入：'+file.name);};
+      reader.readAsText(file,'UTF-8');
+    } else if(type==='word'&&typeof JSZip!=='undefined'){
+      reader.onload=function(e){
+        JSZip.loadAsync(e.target.result).then(function(zip){var xf=zip.file('word/document.xml');if(!xf)return Promise.reject();return xf.async('text');})
+        .then(function(xml){
+          var xd=new DOMParser().parseFromString(xml,'application/xml');
+          var texts=[];xd.querySelectorAll('p').forEach(function(p){var t='';p.querySelectorAll('t').forEach(function(t2){t+=t2.textContent;});if(t.trim())texts.push(t.trim());});
+          dbSave(id,'[Word 文字預覽]\n\n'+texts.slice(0,80).join('\n'));refItems.push(meta);saveRefMeta();renderRefList();showStatus('已加入：'+file.name);
+        }).catch(function(){dbSave(id,'[無法預覽 Word 內容]');refItems.push(meta);saveRefMeta();renderRefList();showStatus('已加入（無法預覽）：'+file.name);});
+      };reader.readAsArrayBuffer(file);
+    } else if(type==='video'){
+      dbSave(id,'[影片檔案]\n名稱：'+file.name+'\n大小：'+formatBytes(file.size)+'\n格式：'+file.type+'\n\n⚠ 影片檔案較大，僅顯示資訊。');
+      refItems.push(meta);saveRefMeta();renderRefList();showStatus('已加入（影片資訊）：'+file.name);
+    } else {
+      reader.onload=function(e){dbSave(id,String(e.target.result||'').slice(0,20000));refItems.push(meta);saveRefMeta();renderRefList();showStatus('已加入：'+file.name);};
+      reader.onerror=function(){dbSave(id,'[無法讀取]');refItems.push(meta);saveRefMeta();renderRefList();};
+      reader.readAsText(file,'UTF-8');
+    }
+  });
+}
+function renderRefList(){
+  var list=document.getElementById('refList'),empty=document.getElementById('refEmpty');
+  empty.style.display=refItems.length?'none':'block';
+  Array.from(list.querySelectorAll('.ref-item')).forEach(function(el){el.parentNode.removeChild(el);});
+  refItems.forEach(function(item){
+    var icon=FILE_ICONS[item.type]||FILE_ICONS.unknown;
+    var div=document.createElement('div');div.className='ref-item';div.id='refitem-'+item.id;
+    div.innerHTML='<div class="ref-item-header" onclick="toggleRefItem(\''+item.id+'\')">'+
+      '<span class="ref-item-icon">'+icon+'</span>'+
+      '<span class="ref-item-name" title="'+escHtml(item.name)+'">'+escHtml(item.name)+'</span>'+
+      '<span style="font-size:10px;color:#bbb;flex-shrink:0;margin-right:4px">'+formatBytes(item.size)+'</span>'+
+      '<button class="ref-item-del" onclick="deleteRefItem(event,\''+item.id+'\')" title="移除">✕</button>'+
+    '</div>'+
+    '<div class="ref-item-body'+(item.expanded?' open':'')+'\" id="refbody-'+item.id+'">'+
+      '<div style="font-size:11px;color:#999;text-align:center;padding:8px">載入中…</div>'+
+    '</div>';
+    list.appendChild(div);
+    if(item.expanded)loadRefItemContent(item.id,item.type);
+  });
+}
+function toggleRefItem(id){
+  var item=refItems.find(function(r){return r.id===id;});if(!item)return;
+  item.expanded=!item.expanded;saveRefMeta();
+  var body=document.getElementById('refbody-'+id);
+  body.classList.toggle('open',item.expanded);
+  if(item.expanded)loadRefItemContent(id,item.type);
+}
+function loadRefItemContent(id,type){
+  var body=document.getElementById('refbody-'+id);if(!body)return;
+  dbGet(id).then(function(data){
+    if(!data){body.innerHTML='<div style="font-size:11px;color:#bbb;text-align:center;padding:8px">無法載入</div>';return;}
+    if(type==='image')body.innerHTML='<img class="ref-img" src="'+data+'" onclick="openRefFullscreen(\''+id+'\')">';
+    else if(type==='pdf')body.innerHTML='<iframe class="ref-pdf-frame" src="'+data+'"></iframe>';
+    else body.innerHTML='<pre class="ref-text-pre">'+escHtml(String(data).slice(0,8000))+'</pre>';
+  });
+}
+function deleteRefItem(e,id){
+  e.stopPropagation();if(!confirm('確定移除此參考資料？'))return;
+  dbDelete(id);refItems=refItems.filter(function(r){return r.id!==id;});saveRefMeta();
+  var el=document.getElementById('refitem-'+id);if(el)el.parentNode.removeChild(el);
+  if(!refItems.length)document.getElementById('refEmpty').style.display='block';
+  showStatus('已移除');
+}
+function openRefFullscreen(id){
+  dbGet(id).then(function(data){
+    if(!data)return;
+    var bg=document.createElement('div');
+    bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:400;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+    bg.onclick=function(){document.body.removeChild(bg);};
+    var img=document.createElement('img');img.src=data;
+    img.style.cssText='max-width:92vw;max-height:92vh;border-radius:6px;box-shadow:0 8px 40px rgba(0,0,0,0.5)';
+    bg.appendChild(img);document.body.appendChild(bg);
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// 靈感筆記
+// ════════════════════════════════════════════════════════════
+function noteInsert(p){var ta=document.getElementById('noteTa');var s=ta.selectionStart,v=ta.value;var ls=v.lastIndexOf('\n',s-1)+1;ta.value=v.slice(0,ls)+p+v.slice(ls);ta.selectionStart=ta.selectionEnd=ls+p.length+(s-ls);ta.focus();saveNote();updateNoteCount();}
+function noteWrap(b,a){var ta=document.getElementById('noteTa');var s=ta.selectionStart,e=ta.selectionEnd,v=ta.value;var sel=v.slice(s,e)||'文字';ta.value=v.slice(0,s)+b+sel+a+v.slice(e);ta.selectionStart=s+b.length;ta.selectionEnd=s+b.length+sel.length;ta.focus();saveNote();updateNoteCount();}
+function clearNote(){if(!confirm('確定清空筆記？'))return;document.getElementById('noteTa').value='';saveNote();updateNoteCount();}
+function renderTags(){document.getElementById('tagsList').innerHTML=noteTags.map(function(tag,i){return'<span class="note-tag" onclick="insertTag(\''+escHtml(tag)+'\')" ondblclick="removeTag('+i+')" title="點擊插入・雙擊刪除">#'+escHtml(tag)+'</span>';}).join('');}
+function addNoteTag(){var n=prompt('輸入標籤名稱');if(!n||!n.trim())return;n=n.trim();if(noteTags.indexOf(n)<0)noteTags.push(n);localStorage.setItem('tw_note_tags',JSON.stringify(noteTags));renderTags();}
+function removeTag(i){noteTags.splice(i,1);localStorage.setItem('tw_note_tags',JSON.stringify(noteTags));renderTags();}
+function insertTag(tag){var ta=document.getElementById('noteTa');var s=ta.selectionStart,v=ta.value,ins='#'+tag+' ';ta.value=v.slice(0,s)+ins+v.slice(s);ta.selectionStart=ta.selectionEnd=s+ins.length;ta.focus();saveNote();updateNoteCount();}
+
+// ════════════════════════════════════════════════════════════
+// JSON 匯出
+// ════════════════════════════════════════════════════════════
+function exportJSON(){
+  var blob=new Blob([JSON.stringify(scriptDoc,null,2)],{type:'application/json'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(scriptDoc.title||'腳本')+'.json';a.click();showStatus('JSON 已下載');
+}
+
+// ════════════════════════════════════════════════════════════
+// 匯出 Modal（工作版 / 提案版）
+// ════════════════════════════════════════════════════════════
+function showExportModal(target){
+  var isPdf=target==='pdf';
+  document.getElementById('modalContainer').innerHTML=
+    '<div class="modal-bg" onclick="closeModal(event)">'+
+    '<div class="modal" style="max-width:540px">'+
+      '<button class="modal-close" onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">✕</button>'+
+      '<h2>'+(isPdf?'🖨 匯出 PDF':'📄 匯出 Word')+'</h2>'+
+
+      '<p style="font-size:13px;font-weight:600;color:#555;margin-bottom:8px">匯出模式</p>'+
+      '<div class="export-mode-radio">'+
+        '<label id="lbl-work" class="selected" onclick="selectExportMode(\'work\')">'+
+          '<input type="radio" name="exportMode" value="work" checked>'+
+          '<div><strong style="display:block;margin-bottom:3px">工作版</strong><span style="font-size:11px;color:#888">完整欄位・有格線・適合劇組使用</span></div>'+
+        '</label>'+
+        '<label id="lbl-proposal" onclick="selectExportMode(\'proposal\')">'+
+          '<input type="radio" name="exportMode" value="proposal">'+
+          '<div><strong style="display:block;margin-bottom:3px">提案版</strong><span style="font-size:11px;color:#888">字體較大・留白增加・簡報視覺風格</span></div>'+
+        '</label>'+
+      '</div>'+
+
+      '<p style="font-size:13px;font-weight:600;color:#555;margin-bottom:8px">包含欄位</p>'+
+      '<div class="export-col-checks">'+
+        '<label><input type="checkbox" id="expScene" '+(colSettings.scene?'checked':'')+'>場次</label>'+
+        '<label><input type="checkbox" id="expShot" '+(colSettings.shot?'checked':'')+'>鏡號</label>'+
+        '<label><input type="checkbox" id="expDur" '+(colSettings.dur?'checked':'')+'>時間</label>'+
+        '<label><input type="checkbox" id="expType" '+(colSettings.type?'checked':'')+'>段落類型</label>'+
+      '</div>'+
+
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px">'+
+        '<button onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">取消</button>'+
+        '<button class="primary" onclick="doExport(\''+target+'\')">'+
+          (isPdf?'🖨 匯出 PDF':'📄 匯出 Word')+
+        '</button>'+
+      '</div>'+
+    '</div></div>';
+}
+
+function selectExportMode(mode){
+  document.querySelectorAll('.export-mode-radio label').forEach(function(l){l.classList.remove('selected');});
+  document.getElementById('lbl-'+mode).classList.add('selected');
+  document.querySelectorAll('.export-mode-radio input').forEach(function(r){r.checked=r.value===mode;});
+}
+
+function getExportOptions(){
+  var mode='work';
+  document.querySelectorAll('.export-mode-radio input').forEach(function(r){if(r.checked)mode=r.value;});
+  return{
+    mode:mode,
+    scene:document.getElementById('expScene')&&document.getElementById('expScene').checked,
+    shot:document.getElementById('expShot')&&document.getElementById('expShot').checked,
+    dur:document.getElementById('expDur')&&document.getElementById('expDur').checked,
+    type:document.getElementById('expType')&&document.getElementById('expType').checked
+  };
+}
+
+function doExport(target){
+  var opts=getExportOptions();
+  document.getElementById('modalContainer').innerHTML='';
+  if(target==='pdf')doPdfExport(opts);
+  else doDocxExport(opts);
+}
+
+// ── PDF 匯出 ──
+function doPdfExport(opts){
+  // 更新列印標頭
+  var ph=document.getElementById('printHeader');
+  ph.innerHTML='<strong>'+escHtml(scriptDoc.title||'未命名腳本')+'</strong>&emsp;'+
+    (scriptDoc.project?'專案：'+escHtml(scriptDoc.project)+'　':'')+
+    (scriptDoc.author?'作者：'+escHtml(scriptDoc.author)+'　':'')+
+    '版本：'+escHtml(scriptDoc.version||'')+'　日期：'+escHtml(scriptDoc.date||'');
+
+  // 臨時覆蓋欄位可見性（配合列印設定）
+  var tbl=document.getElementById('mainTable');
+  var prevScene=colSettings.scene,prevShot=colSettings.shot,prevDur=colSettings.dur,prevType=colSettings.type;
+  colSettings.scene=opts.scene;colSettings.shot=opts.shot;colSettings.dur=opts.dur;colSettings.type=opts.type;
+  applyColSettings();
+  if(opts.mode==='proposal')document.body.classList.add('print-proposal-mode');
+  else document.body.classList.remove('print-proposal-mode');
+
+  setTimeout(function(){
+    window.print();
+    // 還原
+    colSettings.scene=prevScene;colSettings.shot=prevShot;colSettings.dur=prevDur;colSettings.type=prevType;
+    applyColSettings();
+    document.body.classList.remove('print-proposal-mode');
+  },100);
+}
+
+// ── Word 匯出 ──
+function doDocxExport(opts){
+  if(typeof docx==='undefined'){showStatus('Word 模組尚未載入，請稍候或重新整理',3000);return;}
+  showStatus('正在產生 Word 文件…',3000);
+  try{
+    var D=docx;
+    var isProposal=opts.mode==='proposal';
+    var fontSize=isProposal?26:22; // 13pt vs 11pt
+    var cellPad=isProposal?{top:140,bottom:140,left:160,right:160}:{top:100,bottom:100,left:130,right:130};
+
+    function bdr(c,sz){return{style:D.BorderStyle.SINGLE,size:sz||4,color:c};}
+    function bdrs(c,sz){return{top:bdr(c,sz),bottom:bdr(c,sz),left:bdr(c,sz),right:bdr(c,sz)};}
+    var gridBdr=isProposal?bdrs('FFFFFF',2):bdrs('CCCCCC');
+    var hdrBdr=isProposal?bdrs('333333',8):bdrs('999999');
+
+    function makeParas(text,isHdr){
+      return String(text||'').split('\n').map(function(l,i,a){
+        return new D.Paragraph({children:[new D.TextRun({text:l,size:isHdr?fontSize+4:fontSize,bold:isHdr,font:'微軟正黑體'})],spacing:{after:i<a.length-1?100:0,line:isProposal?360:280,lineRule:D.LineRuleType?D.LineRuleType.EXACT:undefined}});
+      });
+    }
+    function makeCell(text,isHdr,w,bg){
+      return new D.TableCell({
+        borders:isHdr?hdrBdr:gridBdr,
+        width:{size:w,type:D.WidthType.DXA},
+        shading:{fill:bg||(isHdr?'E8EFF7':'FFFFFF'),type:D.ShadingType.CLEAR},
+        margins:cellPad,verticalAlign:D.VerticalAlign.TOP,
+        children:makeParas(text,isHdr)
+      });
+    }
+    function makeMiniCell(text,isHdr,w,bg){
+      return new D.TableCell({
+        borders:isHdr?hdrBdr:gridBdr,
+        width:{size:w,type:D.WidthType.DXA},
+        shading:{fill:bg||(isHdr?'E8EFF7':'FAFAFA'),type:D.ShadingType.CLEAR},
+        margins:{top:80,bottom:80,left:80,right:80},verticalAlign:D.VerticalAlign.TOP,
+        children:[new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[new D.TextRun({text:String(text||''),size:isHdr?20:18,bold:isHdr,font:'微軟正黑體',color:isHdr?'333333':'666666'})]})]
+      });
+    }
+
+    // 計算欄寬
+    var pageW=11906,margin=1134,tableW=pageW-margin*2;
+    var usedW=0;
+    var numW=440;usedW+=numW;
+    var typeW=opts.type?900:0;usedW+=typeW;
+    var sceneW=opts.scene?700:0;usedW+=sceneW;
+    var shotW=opts.shot?700:0;usedW+=shotW;
+    var durW=opts.dur?700:0;usedW+=durW;
+    var remaining=tableW-usedW;
+    var leftW=Math.round(remaining*0.55),rightW=remaining-leftW;
+    var colWidths=[numW];
+    if(opts.type)colWidths.push(typeW);
+    if(opts.scene)colWidths.push(sceneW);
+    if(opts.shot)colWidths.push(shotW);
+    if(opts.dur)colWidths.push(durW);
+    colWidths.push(leftW,rightW);
+
+    // 型別色對照
+    var typeBgs={normal:'FFFFFF','scene-cut':'F0F0F0','key-shot':'FFFDE7','sfx':'E8F4FD','note':'F0FAF0'};
+    var typeLabels={'normal':'一般','scene-cut':'場景切換','key-shot':'重點鏡頭','sfx':'音效提示','note':'備註'};
+
+    // 表頭
+    var hdrCells=[makeMiniCell('#',true,numW,'D0D8E8')];
+    if(opts.type)hdrCells.push(makeCell('類型',true,typeW,'DDE6F4'));
+    if(opts.scene)hdrCells.push(makeMiniCell('場次',true,sceneW,'DDE6F4'));
+    if(opts.shot)hdrCells.push(makeMiniCell('鏡號',true,shotW,'DDE6F4'));
+    if(opts.dur)hdrCells.push(makeMiniCell('時間',true,durW,'DDE6F4'));
+    hdrCells.push(makeCell('畫面',true,leftW,'DDE6F4'));
+    hdrCells.push(makeCell('聲音',true,rightW,'DDE6F4'));
+    var headerRow=new D.TableRow({children:hdrCells});
+
+    // 資料列
+    var dataRows=scriptDoc.rows.map(function(row,i){
+      var bg=typeBgs[row.type||'normal']||'FFFFFF';
+      var cells=[makeMiniCell(String(i+1),false,numW,'F8F8F8')];
+      if(opts.type)cells.push(makeCell(typeLabels[row.type||'normal']||'一般',false,typeW,bg));
+      if(opts.scene)cells.push(makeMiniCell(row.scene||'',false,sceneW,bg));
+      if(opts.shot)cells.push(makeMiniCell(row.shot||'',false,shotW,bg));
+      if(opts.dur)cells.push(makeMiniCell(row.duration||'',false,durW,bg));
+      cells.push(new D.TableCell({borders:gridBdr,width:{size:leftW,type:D.WidthType.DXA},shading:{fill:bg,type:D.ShadingType.CLEAR},margins:cellPad,verticalAlign:D.VerticalAlign.TOP,children:makeParas(row.left,false)}));
+      cells.push(new D.TableCell({borders:gridBdr,width:{size:rightW,type:D.WidthType.DXA},shading:{fill:bg,type:D.ShadingType.CLEAR},margins:cellPad,verticalAlign:D.VerticalAlign.TOP,children:makeParas(row.right,false)}));
+      return new D.TableRow({children:cells});
+    });
+
+    // 文件標頭段落
+    var metaLines=[
+      scriptDoc.title&&('腳本標題：'+scriptDoc.title),
+      scriptDoc.project&&('專案名稱：'+scriptDoc.project),
+      (scriptDoc.author||scriptDoc.version)&&('作者：'+(scriptDoc.author||'')+'　版本：'+(scriptDoc.version||'')+'　日期：'+(scriptDoc.date||'')),
+      scriptDoc.notes&&('備註：'+scriptDoc.notes)
+    ].filter(Boolean);
+
+    // 若提案版，總時長附在末尾
+    if(isProposal&&opts.dur){
+      var total=0;scriptDoc.rows.forEach(function(r){total+=parseDuration(r.duration);});
+      if(total)metaLines.push('總時長：'+formatDuration(total));
+    }
+
+    var children=[
+      new D.Paragraph({children:[new D.TextRun({text:scriptDoc.title||'腳本',size:isProposal?48:36,bold:true,font:'微軟正黑體'})],spacing:{after:isProposal?200:160}})
+    ];
+    metaLines.forEach(function(t){
+      children.push(new D.Paragraph({children:[new D.TextRun({text:t,size:isProposal?22:20,font:'微軟正黑體',color:'666666'})],spacing:{after:80}}));
+    });
+    children.push(new D.Paragraph({children:[new D.TextRun({text:'',size:22})],spacing:{after:280}}));
+    children.push(new D.Table({width:{size:tableW,type:D.WidthType.DXA},columnWidths:colWidths,rows:[headerRow].concat(dataRows)}));
+
+    var docObj=new D.Document({sections:[{
+      properties:{page:{size:{width:11906,height:16838},margin:{top:margin,right:margin,bottom:margin,left:margin}}},
+      children:children
+    }]});
+
+    D.Packer.toBuffer(docObj).then(function(buf){
+      var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+      var a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=(scriptDoc.title||'腳本')+(opts.mode==='proposal'?'_提案版':'_工作版')+'.docx';
+      a.click();
+      showStatus('Word 文件已下載 ✓',2000);
+    });
+  }catch(e){console.error(e);showStatus('匯出失敗：'+e.message,4000);}
+}
+
+// ════════════════════════════════════════════════════════════
+// 匯入
+// ════════════════════════════════════════════════════════════
+function showImportModal(){
+  document.getElementById('modalContainer').innerHTML=
+    '<div class="modal-bg" onclick="closeModal(event)">'+
+    '<div class="modal">'+
+      '<button class="modal-close" onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">✕</button>'+
+      '<h2>📥 匯入腳本</h2>'+
+      '<div style="display:flex;gap:0;border-bottom:1px solid #e0e0e0;margin-bottom:16px">'+
+        '<button class="import-tab active" id="tab-json" onclick="switchTab(\'json\')">JSON 專案</button>'+
+        '<button class="import-tab" id="tab-text" onclick="switchTab(\'text\')">純文字 / Markdown</button>'+
+        '<button class="import-tab" id="tab-docx" onclick="switchTab(\'docx\')">Word (.docx)</button>'+
+      '</div>'+
+      '<div id="panel-json"><p style="font-size:12px;color:#888;margin-bottom:10px">匯入先前匯出的 JSON 專案檔，完整還原所有欄位。</p><input type="file" accept=".json" onchange="importJSONFile(event)" style="font-size:13px;width:100%"></div>'+
+      '<div id="panel-text" style="display:none">'+
+        '<div class="info-box">自動偵測：① Markdown 表格 <code>| 畫面 | 聲音 |</code>　② 關鍵字標記 <code>畫面：</code> <code>VO：</code>　③ 段落輪替（寬鬆）</div>'+
+        '<textarea id="pasteImport" rows="8" style="margin-bottom:10px;font-family:monospace;font-size:12px" placeholder="貼上 Markdown 表格或關鍵字格式文字…"></textarea>'+
+        '<div id="pastePreview" style="display:none;margin-bottom:10px"></div>'+
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+          '<button class="primary" onclick="previewPaste()">🔍 預覽解析</button>'+
+          '<button id="btnConfirmPaste" style="display:none" class="primary" onclick="confirmPaste()">✓ 確認匯入</button>'+
+          '<span id="pasteInfo" style="font-size:12px;color:#888"></span>'+
+        '</div>'+
+      '</div>'+
+      '<div id="panel-docx" style="display:none">'+
+        '<div class="info-box">優先解析 Word 表格 → 關鍵字段落 → 版面分欄（顯示警告）</div>'+
+        '<input type="file" accept=".docx" onchange="importDocxInput(event)" style="font-size:13px;width:100%;margin-bottom:10px">'+
+        '<div id="docxStatus" style="font-size:13px;color:#555;margin-top:8px"></div>'+
+        '<div id="docxPreview" style="display:none;margin-top:10px"></div>'+
+        '<div id="docxActions" style="display:none;margin-top:10px"></div>'+
+      '</div>'+
+    '</div></div>';
+}
+function switchTab(tab){
+  ['json','text','docx'].forEach(function(t){
+    var p=document.getElementById('panel-'+t),b=document.getElementById('tab-'+t);
+    if(!p||!b)return;p.style.display=t===tab?'block':'none';
+    if(t===tab)b.classList.add('active');else b.classList.remove('active');
+  });
+}
+function closeModal(e){if(e.target.classList.contains('modal-bg'))document.getElementById('modalContainer').innerHTML='';}
+
+function importJSONFile(e){
+  var file=e.target.files[0];if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      var d=JSON.parse(ev.target.result);
+      if(d&&d.rows){
+        d.rows=d.rows.map(function(r){return Object.assign({type:'normal',scene:'',shot:'',duration:''},r);});
+        scriptDoc=d;saveDoc();renderMeta();renderBody();showStatus('JSON 已匯入 ✓');document.getElementById('modalContainer').innerHTML='';
+      } else showStatus('JSON 格式錯誤',2000);
+    }catch(ex){showStatus('解析失敗',2000);}
+  };reader.readAsText(file);
+}
+
+// ── 解析引擎 ──
+function parseMarkdownTable(raw){
+  var lines=raw.split('\n'),tableLines=lines.filter(function(l){return/\|/.test(l);});
+  if(tableLines.length<2)return null;
+  var sepRe=/^[\|\s\-:=]+$/;
+  function parseCells(line){var cells=[],re=/\|([^|]*)/g,m;while((m=re.exec(line))!==null)cells.push(m[1].trim());while(cells.length&&cells[cells.length-1]==='')cells.pop();return cells;}
+  var headerIdx=-1;for(var i=0;i<tableLines.length;i++){if(!sepRe.test(tableLines[i])){headerIdx=i;break;}}
+  if(headerIdx<0)return null;
+  var headers=parseCells(tableLines[headerIdx]);if(headers.length<2)return null;
+  var leftKW=/(畫面|場景|鏡頭|視覺|image|video)/i,rightKW=/(聲音|旁白|台詞|音效|音樂|VO|SFX|audio|BGM)/i;
+  var leftCol=-1,rightCol=-1;headers.forEach(function(h,i){if(leftKW.test(h)&&leftCol<0)leftCol=i;if(rightKW.test(h)&&rightCol<0)rightCol=i;});
+  if(leftCol<0)leftCol=0;if(rightCol<0||rightCol===leftCol)rightCol=leftCol===0?1:0;
+  function stripMd(s){return String(s||'').replace(/\*\*(.+?)\*\*/g,'$1').replace(/__(.+?)__/g,'$1').replace(/_(.+?)_/g,'$1').replace(/`(.+?)`/g,'$1').replace(/<br\s*\/?>/gi,'\n').trim();}
+  var rows=[];for(var i=headerIdx+1;i<tableLines.length;i++){if(sepRe.test(tableLines[i]))continue;var cells=parseCells(tableLines[i]);if(!cells.length)continue;var left=stripMd(cells[leftCol]||''),right=stripMd(cells[rightCol]||'');if(left||right)rows.push({id:uid(),type:'normal',scene:'',shot:'',duration:'',left:left,right:right});}
+  return rows.length?{rows:rows,mode:'markdown'}:null;
+}
+function parseKeywordText(raw){
+  var lines=raw.split('\n'),leftKW=/^(畫面[:：]|場景[:：]|鏡頭[:：]|視覺[:：])/,rightKW=/^(聲音[:：]|旁白[:：]|VO[:：]|台詞[:：]|SFX[:：]|音效[:：]|音樂[:：]|字卡[:：]|BGM[:：])/;
+  var rows=[],cur={id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''},has=false,lastSide='left';
+  lines.forEach(function(l){var lt=l.trim();
+    if(!lt){if(has){rows.push(cur);cur={id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''};has=false;lastSide='left';}return;}
+    if(leftKW.test(lt)){cur.left+=(cur.left?'\n':'')+lt.replace(leftKW,'').trim();has=true;lastSide='left';}
+    else if(rightKW.test(lt)){cur.right+=(cur.right?'\n':'')+lt.replace(rightKW,'').trim();has=true;lastSide='right';}
+    else{if(lastSide==='right')cur.right+='\n'+lt;else cur.left+=(cur.left?'\n':'')+lt;has=true;}
+  });if(has)rows.push(cur);return rows.length?{rows:rows,mode:'keyword'}:null;
+}
+function parseLooseText(raw){
+  var paras=raw.split(/\n\s*\n/).map(function(p){return p.trim();}).filter(Boolean);if(!paras.length)return null;
+  var rows=[];for(var i=0;i<paras.length;i+=2)rows.push({id:uid(),type:'normal',scene:'',shot:'',duration:'',left:paras[i]||'',right:paras[i+1]||''});
+  return{rows:rows,mode:'loose'};
+}
+function parseTextAuto(raw){
+  var md=parseMarkdownTable(raw);if(md)return md;
+  var lines=raw.split('\n'),lk=/^(畫面[:：]|場景[:：]|鏡頭[:：]|視覺[:：])/,rk=/^(聲音[:：]|旁白[:：]|VO[:：]|台詞[:：]|SFX[:：]|音效[:：]|音樂[:：]|字卡[:：]|BGM[:：])/;
+  if(lines.some(function(l){return lk.test(l.trim())||rk.test(l.trim());}))return parseKeywordText(raw);
+  return parseLooseText(raw);
+}
+function modeLabel(mode){return{markdown:'Markdown 表格',keyword:'關鍵字標記',loose:'段落輪替'}[mode]||mode;}
+function buildPreviewTable(rows){
+  var p=rows.slice(0,5),more=rows.length>5?'<p style="font-size:11px;color:#999;margin-top:4px">…還有 '+(rows.length-5)+' 列</p>':'';
+  return'<table class="preview-table"><tr><th style="width:50%">畫面</th><th>聲音</th></tr>'+p.map(function(r){return'<tr><td>'+escHtml(r.left)+'</td><td>'+escHtml(r.right)+'</td></tr>';}).join('')+'</table>'+more;
+}
+function previewPaste(){
+  var raw=document.getElementById('pasteImport').value.trim();
+  var pv=document.getElementById('pastePreview'),info=document.getElementById('pasteInfo'),btn=document.getElementById('btnConfirmPaste');
+  if(!raw){showStatus('請先貼上文字');return;}
+  var result=parseTextAuto(raw);
+  if(!result||!result.rows.length){pv.style.display='none';info.textContent='無法解析';btn.style.display='none';pendingPasteRows=[];return;}
+  pendingPasteRows=result.rows;
+  pv.innerHTML='<p style="font-size:12px;color:#185FA5;margin-bottom:5px">格式：<strong>'+modeLabel(result.mode)+'</strong>，共 '+result.rows.length+' 列</p>'+buildPreviewTable(result.rows);
+  pv.style.display='block';info.textContent='';btn.style.display='inline-block';
+}
+function confirmPaste(){
+  if(!pendingPasteRows.length)return;
+  if(confirm('共 '+pendingPasteRows.length+' 列。確定 → 附加；取消 → 取代'))scriptDoc.rows=scriptDoc.rows.concat(pendingPasteRows.map(function(r){return Object.assign({},r,{id:uid()});}));
+  else scriptDoc.rows=pendingPasteRows.map(function(r){return Object.assign({},r,{id:uid()});});
+  saveDoc();renderMeta();renderBody();showStatus('已匯入 '+pendingPasteRows.length+' 列 ✓');document.getElementById('modalContainer').innerHTML='';
+}
+
+function getXmlText(node){var paras=node.querySelectorAll('p');if(paras.length>1){var parts=[];paras.forEach(function(p){var s='';p.querySelectorAll('t').forEach(function(t){s+=t.textContent;});if(s.trim())parts.push(s.trim());});return parts.join('\n');}var text='';node.querySelectorAll('t').forEach(function(t){text+=t.textContent;});return text;}
+function importDocxInput(e){
+  var file=e.target.files[0];if(!file)return;
+  var statusEl=document.getElementById('docxStatus'),previewEl=document.getElementById('docxPreview'),actionsEl=document.getElementById('docxActions');
+  statusEl.innerHTML='正在解析…';previewEl.style.display='none';actionsEl.style.display='none';pendingDocxRows=[];
+  if(typeof JSZip==='undefined'){statusEl.innerHTML='<span style="color:#c0392b">JSZip 尚未載入</span>';return;}
+  file.arrayBuffer().then(function(ab){return JSZip.loadAsync(ab);}).then(function(zip){
+    var xf=zip.file('word/document.xml');if(!xf){statusEl.innerHTML='<span style="color:#c0392b">無效的 .docx 檔案</span>';return Promise.reject('no xml');}return xf.async('text');
+  }).then(function(xmlText){
+    var xd=new DOMParser().parseFromString(xmlText,'application/xml'),rows=[],mode='';
+    var tables=xd.querySelectorAll('tbl');
+    if(tables.length){var bestT=null,bestS=0;tables.forEach(function(tbl){var trs=tbl.querySelectorAll('tr'),maxC=0;trs.forEach(function(tr){var c=tr.querySelectorAll('tc').length;if(c>maxC)maxC=c;});var s=trs.length*maxC;if(maxC>=2&&s>bestS){bestS=s;bestT=tbl;}});
+      if(bestT){var trs=Array.from(bestT.querySelectorAll('tr')),startRow=0;var ft=Array.from(trs[0].querySelectorAll('tc')).map(function(tc){return getXmlText(tc).trim();});
+        var lkh=/(畫面|場景|鏡頭|視覺|image|video)/i,rkh=/(聲音|旁白|台詞|音效|音樂|vo|sfx|audio|bgm)/i;if(ft.some(function(t){return lkh.test(t)||rkh.test(t);}))startRow=1;
+        var lc=0,rc=1;if(startRow===1){ft.forEach(function(t,i){if(lkh.test(t)&&lc===0&&i!==rc)lc=i;if(rkh.test(t)&&rc===1&&i!==lc)rc=i;});}
+        for(var i=startRow;i<trs.length;i++){var cells=Array.from(trs[i].querySelectorAll('tc'));var left=cells[lc]?getXmlText(cells[lc]).trim():'';var right=cells[rc]?getXmlText(cells[rc]).trim():'';if(left||right)rows.push({id:uid(),type:'normal',scene:'',shot:'',duration:'',left:left,right:right});}
+        if(rows.length)mode='table';}}
+    if(!rows.length){var hasCol=false;xd.querySelectorAll('sectPr').forEach(function(s){var cols=s.querySelector('cols');if(cols){var n=parseInt(cols.getAttribute('w:num')||cols.getAttribute('num')||'1',10);if(n>1)hasCol=true;}});
+      if(hasCol){statusEl.innerHTML='<div class="warn-box">⚠️ <strong>偵測到 Word 版面分欄</strong><br>版面分欄無法準確轉換。建議改用「插入表格」格式後再匯入。</div>';return;}
+      var paras=xd.querySelectorAll('p'),pts=[];paras.forEach(function(p){var t=getXmlText(p).trim();if(t)pts.push(t);});var raw=pts.join('\n');
+      var kw=parseKeywordText(raw);if(kw&&kw.rows.length){rows=kw.rows;mode='keyword';}else{var lo=parseLooseText(raw);if(lo&&lo.rows.length){rows=lo.rows;mode='loose';}}}
+    if(!rows.length){statusEl.innerHTML='<span style="color:#c0392b">無法解析文件內容。</span>';return;}
+    pendingDocxRows=rows;
+    var mn={table:'Word 表格雙欄',keyword:'關鍵字段落',loose:'段落輪替'};
+    statusEl.innerHTML='<span style="color:#185FA5">✓ '+mn[mode]+'，共 '+rows.length+' 列</span>';
+    previewEl.innerHTML=buildPreviewTable(rows);previewEl.style.display='block';
+    actionsEl.innerHTML='<div style="display:flex;gap:8px;margin-top:8px"><button class="primary" onclick="confirmDocxRows(true)">附加到末尾</button><button onclick="confirmDocxRows(false)">取代全部</button></div>';actionsEl.style.display='block';
+  }).catch(function(err){if(err!=='no xml')statusEl.innerHTML='<span style="color:#c0392b">解析失敗：'+escHtml(String(err))+'</span>';});
+}
+function confirmDocxRows(append){
+  if(!pendingDocxRows.length)return;
+  var fresh=pendingDocxRows.map(function(r){return Object.assign({},r,{id:uid()});});
+  if(append)scriptDoc.rows=scriptDoc.rows.concat(fresh);else scriptDoc.rows=fresh;
+  saveDoc();renderMeta();renderBody();showStatus('已匯入 '+pendingDocxRows.length+' 列 ✓');document.getElementById('modalContainer').innerHTML='';
+}
+
+// ════════════════════════════════════════════════════════════
+// 使用指南
+// ════════════════════════════════════════════════════════════
+function showGuide(){
+  document.getElementById('modalContainer').innerHTML=
+    '<div class="modal-bg" onclick="closeModal(event)">'+
+    '<div class="modal" style="max-width:680px;max-height:92vh;overflow-y:auto">'+
+      '<button class="modal-close" onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">✕</button>'+
+      '<h2>？ 使用指南</h2>'+
+
+      '<div class="guide-section">'+
+        '<h3>什麼是雙欄式腳本？</h3>'+
+        '<p>雙欄式腳本是影視製作的標準格式。<strong>左欄「畫面」</strong>描述攝影機看到的一切（場景、鏡頭、動作、構圖），<strong>右欄「聲音」</strong>描述聽覺資訊（旁白 VO、台詞、音效 SFX、音樂 BGM）。兩欄並列，讓導演、攝影、剪接師同時掌握畫面與聲音的對應關係。</p>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>基本編輯操作</h3>'+
+        '<ul>'+
+          '<li>點擊任意欄位開始輸入，<strong>Shift+Enter</strong> 在欄內換行</li>'+
+          '<li><strong>Enter</strong>：在畫面欄按下會跳至聲音欄；在聲音欄按下會新增下一列</li>'+
+          '<li><strong>Tab</strong>：依序切換至下一個欄位</li>'+
+          '<li>每列右側有 ▲ 上移 / ▼ 下移 / ⧉ 複製 / ✕ 刪除按鈕</li>'+
+          '<li>工具列的「▲ 上移」「▼ 下移」「✕ 刪除」作用於<strong>目前選取的列</strong>（點擊任意欄位即選取）</li>'+
+        '</ul>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>文件資訊列</h3>'+
+        '<p>頁面上方可填寫腳本標題、專案名稱、作者、版本、日期、備註。這些資訊在匯出 PDF 與 Word 時會帶入文件開頭，<strong>建議每份腳本都填寫完整</strong>，方便版本管理。</p>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>⚙ 進階功能（工具列右側「⚙ 進階」按鈕）</h3>'+
+        '<p style="font-size:12px;color:#888;margin-bottom:8px">所有進階功能預設關閉，不影響基本編輯體驗。</p>'+
+        '<ul>'+
+          '<li><strong>場次（Scene）</strong>：每列出現場次輸入欄，填入如 S1、A、INT 等場次標記，方便導演與製片對場分工。</li>'+
+          '<li><strong>鏡號（Shot）</strong>：填入 01、02A 等鏡頭編號，是正式拍攝表的基本單位。</li>'+
+          '<li><strong>時間（Duration）</strong>：填入預估秒數，支援 <code>3</code>、<code>3s</code>、<code>00:03</code>、<code>1:30</code> 格式。開啟後設定列右側會顯示<strong>全片總時長</strong>，自動加總。</li>'+
+          '<li><strong>段落類型</strong>：每列左側出現下拉選單，可標記：'+
+            '<ul>'+
+              '<li>一般（白底）</li>'+
+              '<li>場景切換（淡灰）— 用於場景轉換、時間跳接</li>'+
+              '<li>重點鏡頭（淡黃）— 標記關鍵畫面、強調鏡頭</li>'+
+              '<li>音效提示（淡藍）— 標記重要 SFX 或 BGM 節點</li>'+
+              '<li>備註（淡綠）— 製作備注、給剪輯師的說明</li>'+
+            '</ul>'+
+            '背景色在 PDF 與 Word 匯出時均會保留。'+
+          '</li>'+
+          '<li><strong>鏡頭語言快捷按鈕</strong>：開啟後顯示鏡頭術語列（ECU、CU、MCU、MS、WS、PAN、TILT、DOLLY、ZOOM IN/OUT、RACK FOCUS、HANDHELD、POV、OTS、INSERT、CUTAWAY、B-ROLL）。點擊任意按鈕，會自動插入到<strong>最後點擊過的畫面欄游標位置</strong>，格式為 <code>CU：</code>，若行有內容則自動換行後插入。</li>'+
+        '</ul>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>🖨 匯出 PDF ／ 📄 匯出 Word</h3>'+
+        '<p style="font-size:12px;color:#888;margin-bottom:8px">點擊按鈕後會先開啟設定視窗，再執行匯出。</p>'+
+        '<ul>'+
+          '<li><strong>工作版</strong>：完整格線、標準字體，適合劇組工作文件與內部溝通。</li>'+
+          '<li><strong>提案版</strong>：無格線、字體較大、行距加寬，簡報感強，適合客戶提案使用。</li>'+
+          '<li>「包含欄位」可單獨控制場次、鏡號、時間、段落類型是否出現在匯出文件，與畫面上的顯示設定無關。</li>'+
+          '<li>PDF 匯出使用瀏覽器列印，選「另存為 PDF」，建議設定 <strong>A4 直式、不縮放、不加頁首頁尾</strong>。</li>'+
+          '<li>Word 匯出為真正的 .docx 表格格式，可用 Microsoft Word 開啟編輯，檔名會自動加上「_工作版」或「_提案版」後綴。</li>'+
+          '<li><strong>Word 匯出需要網路連線</strong>（載入 docx.js 模組約 1.5MB）。按鈕顯示「載入中」時請稍候，變回「📄 Word」即可使用。離線時建議改用 PDF 匯出。</li>'+
+        '</ul>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>↓ JSON 專案備份</h3>'+
+        '<p>將整份腳本（含所有欄位、進階資料）匯出為 .json 檔案。<strong>建議定期備份</strong>，因為瀏覽器資料有被清除的可能。重新匯入時點「📥 匯入 → JSON 專案」選擇檔案即可完整還原。</p>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>📥 匯入腳本</h3>'+
+        '<ul>'+
+          '<li><strong>JSON 專案</strong>：還原先前備份的完整腳本，包含場次、鏡號、段落類型等所有欄位。</li>'+
+          '<li><strong>純文字 / Markdown 貼上</strong>：系統自動偵測三種格式：'+
+            '<ul>'+
+              '<li>Markdown 表格：<code>| 畫面 | 聲音 |</code>，自動辨識欄標題</li>'+
+              '<li>關鍵字標記：以 <code>畫面：</code>、<code>VO：</code>、<code>SFX：</code>、<code>BGM：</code> 等開頭</li>'+
+              '<li>段落輪替（寬鬆模式）：無標記時每段落輪流分配為畫面欄 / 聲音欄</li>'+
+            '</ul>'+
+            '貼上後點「🔍 預覽解析」確認結果，再按「✓ 確認匯入」。'+
+          '</li>'+
+          '<li><strong>Word (.docx) 匯入</strong>：優先解析 Word 表格（最精確）→ 關鍵字段落 → 若為版面分欄則顯示警告無法轉換。</li>'+
+        '</ul>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>📎 參考資料側欄</h3>'+
+        '<ul>'+
+          '<li>拖曳或點擊上傳客戶提供的參考文件，一邊寫腳本一邊參閱。</li>'+
+          '<li>支援格式：圖片（JPG/PNG/GIF/WebP/SVG）、PDF、Word (.docx)、Excel、PPT、純文字、Markdown、CSV、影片（MP4/MOV，僅顯示資訊）。</li>'+
+          '<li>圖片點擊可全螢幕放大；PDF 嵌入閱讀器可直接捲動；Word 自動提取文字預覽。</li>'+
+          '<li>點擊項目標題展開 / 收合，按 ✕ 移除。<strong>檔案儲存在瀏覽器 IndexedDB，不會上傳至任何伺服器。</strong></li>'+
+        '</ul>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>💡 靈感筆記側欄</h3>'+
+        '<ul>'+
+          '<li>隨時記錄創意方向、客戶要求、待辦事項，不影響腳本主體。</li>'+
+          '<li>工具列可快速插入 Markdown 標記（標題、粗體、清單、待辦事項、分隔線）。</li>'+
+          '<li>可新增自訂標籤：點擊標籤插入到游標位置，雙擊標籤刪除。右下角顯示即時字數。</li>'+
+          '<li>自動儲存，重新整理頁面不會遺失。</li>'+
+        '</ul>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>📋 腳本範本</h3>'+
+        '<p>工具列「📋 範本」提供四種內建範本，套用時可選擇「取代全部」或「附加到末尾」：</p>'+
+        '<ul>'+
+          '<li><strong>YouTube 影片</strong>：通用 YouTube 內容腳本結構</li>'+
+          '<li><strong>訪談影片</strong>：主持人對談、受訪者剪接結構</li>'+
+          '<li><strong>工商廣告</strong>：痛點建立 → 產品展示 → CTA 結構</li>'+
+          '<li><strong>居家設計開箱（20坪）</strong>：完整的敘事型居家開箱腳本，含片頭資訊卡、九個段落、生活動線導覽與結尾互動引導，預設已填入場次、鏡號、時間與段落類型範例。</li>'+
+        '</ul>'+
+      '</div>'+
+
+      '<div class="guide-section">'+
+        '<h3>資料儲存說明</h3>'+
+        '<p>腳本內容自動儲存於瀏覽器 <strong>localStorage</strong>，重新整理頁面後資料不會消失。參考資料檔案儲存於 <strong>IndexedDB</strong>。所有資料均儲存在本機，不會上傳至任何伺服器。</p>'+
+        '<p style="margin-top:6px;color:#c0392b;font-size:12px">⚠ 清除瀏覽器快取或使用無痕模式可能導致資料遺失，<strong>建議定期使用「↓ JSON」備份重要腳本。</strong></p>'+
+      '</div>'+
+
+    '</div></div>';
+}
+
+// ════════════════════════════════════════════════════════════
+// 範本
+// ════════════════════════════════════════════════════════════
+var TEMPLATES={
+  youtube:{name:'YouTube 影片',rows:[
+    {type:'scene-cut',scene:'A',shot:'01',duration:'3',left:'開場：吸睛畫面，特寫產品或主角',right:'音樂淡入（輕快節奏）\nVO：（開頭鉤子）'},
+    {type:'normal',scene:'A',shot:'02',duration:'8',left:'中景：主角面對鏡頭，自然親切',right:'VO：大家好，我是 [姓名]，今天要跟大家分享…'},
+    {type:'normal',scene:'B',shot:'01',duration:'10',left:'切換：B-roll，展示主題相關影像',right:'BGM 持續\nVO：這支影片你會學到…'},
+    {type:'key-shot',scene:'B',shot:'02',duration:'15',left:'演示：操作示範或重點畫面特寫',right:'VO：首先，第一步是…\nSFX：點擊音效'},
+    {type:'scene-cut',scene:'C',shot:'01',duration:'5',left:'結尾：訂閱動畫、片尾卡',right:'BGM 淡出\nVO：記得按讚訂閱！'}
+  ]},
+  interview:{name:'訪談影片',rows:[
+    {type:'scene-cut',scene:'A',shot:'01',duration:'5',left:'開場：剪接訪談精華片段',right:'BGM：低調背景音樂\n字卡：節目名稱'},
+    {type:'normal',scene:'A',shot:'02',duration:'10',left:'主持人中景，現場環境建立',right:'主持人：今天邀請到的是…\n字卡：主持人姓名'},
+    {type:'key-shot',scene:'A',shot:'03',duration:'0',left:'受訪者中景 / 特寫',right:'受訪者：（回答問題）\n字卡：姓名 / 頭銜'},
+    {type:'normal',scene:'B',shot:'01',duration:'0',left:'B-roll：相關影像補充',right:'VO：根據受訪者的經歷…\nBGM 持續'},
+    {type:'scene-cut',scene:'C',shot:'01',duration:'5',left:'結尾：主持人面對鏡頭送客',right:'主持人：感謝今天的分享\nBGM 淡入'}
+  ]},
+  commercial:{name:'工商廣告',rows:[
+    {type:'scene-cut',scene:'A',shot:'01',duration:'3',left:'開場特寫：品牌核心視覺',right:'SFX：品牌音效\n字卡：品牌標語'},
+    {type:'normal',scene:'A',shot:'02',duration:'8',left:'情境建立：目標受眾日常場景',right:'VO：你是否曾經遇過…\nBGM：情感性音樂'},
+    {type:'key-shot',scene:'B',shot:'01',duration:'6',left:'產品出場：使用中畫面',right:'VO：現在有了 [產品名]…'},
+    {type:'normal',scene:'B',shot:'02',duration:'10',left:'功能展示：逐一呈現',right:'VO：[功能1]、[功能2]\nSFX：操作音效'},
+    {type:'scene-cut',scene:'C',shot:'01',duration:'5',left:'Call to Action：官網畫面',right:'VO：立即前往了解更多\n字卡：品牌 + LOGO'}
+  ]},
+
+  home20p:{name:'居家設計開箱（20坪）',rows:[
+
+    // ── SECTION 0：片頭資訊卡 ──
+    {type:'scene-cut',scene:'S0',shot:'01',duration:'5',
+      left:'黑底白字動態字卡，逐行顯示裝潢資訊\n字卡內容：\n建案：[建案名稱]\n坪數：20 坪\n格局：[房型，如 2房2廳]\n設計師：[設計師/公司名]\n完工年份：[年份]',
+      right:'BGM 淡入（沉穩、帶有溫度的鋼琴或弦樂）\nSFX：細微的翻頁或光影切換聲\n\n【無旁白，讓資訊卡靜靜說話】'},
+
+    // ── SECTION 1：開場 Hook ──
+    {type:'key-shot',scene:'S1',shot:'01',duration:'8',
+      left:'空鏡剪輯序列（快剪，各 0.5–1 秒）：\n① CU 長虹玻璃光影折射特寫\n② CU 木紋門片紋理推近\n③ CU 水磨石檯面反光細節\n④ CU 隱藏燈帶暖光漸亮\n⑤ WS 整體客廳俯角\nBGM 由弱漸強，配合剪接節奏',
+      right:'BGM 漸強\n\n【無旁白，純畫面與音樂建立氛圍】'},
+
+    {type:'key-shot',scene:'S1',shot:'02',duration:'12',
+      left:'主持人／屋主 MS 對鏡頭，站在玄關門口\nDOLLY 緩慢向後拉，帶出整個空間輪廓\n表情平靜而自然，非表演式',
+      right:'VO：20 坪，在很多人眼裡是一個侷限。\n但在這個家裡，我們想讓它成為一種剛剛好的選擇。\n\n（停頓 1 秒）\n\n這支影片，帶你走進每一個設計決定背後的邏輯。'},
+
+    {type:'note',scene:'S1',shot:'',duration:'',
+      left:'【製作備注】字卡疊加：\n「20坪，設計師如何讓空間感覺更大？」\n建議使用細字體、白底黑字或透明疊字',
+      right:'BGM 持續，音量微降\n字卡出現時間：旁白說完後停留 2 秒'},
+
+    // ── SECTION 2：玄關 ──
+    {type:'scene-cut',scene:'S2',shot:'01',duration:'5',
+      left:'場次字卡：「玄關 ── 回家的第一層儀式」\n黑底白字，簡潔字體',
+      right:'BGM 保持\nSFX：細微風聲或門開合聲（極輕）'},
+
+    {type:'normal',scene:'S2',shot:'02',duration:'15',
+      left:'DOLLY IN：從大門口緩推進玄關\n重點呈現：長虹玻璃隔屏、採光角度\nCU：光線透過長虹玻璃形成的光影條紋\nCU：玄關地坪材質（如六角磚、石材）',
+      right:'VO：玄關只有一坪左右，採光來源只有大門。\n\n設計師選擇用長虹玻璃做隔屏，\n不是為了好看，而是讓光可以繼續往內走。\n\n這道玻璃後面是鞋櫃，但你不會察覺，\n因為光讓你先感受到的，是空間。'},
+
+    {type:'key-shot',scene:'S2',shot:'03',duration:'8',
+      left:'CU 鞋櫃把手細節（隱藏式無把手設計）\nCU 開關鞋櫃的動作，門片打開\nMS 屋主換鞋動作（生活感）',
+      right:'VO：鞋櫃做了全隱藏門片，把手消失了。\n牆面是完整的，視覺上玄關只是一條通道，\n而不是一個雜物收納區。'},
+
+    // ── SECTION 3：客廳 ──
+    {type:'scene-cut',scene:'S3',shot:'01',duration:'4',
+      left:'場次字卡：「客廳 ── 讓 20 坪感覺更大的方法」',
+      right:'BGM 輕微轉換，稍微開闊感'},
+
+    {type:'normal',scene:'S3',shot:'02',duration:'18',
+      left:'WS 客廳全景，拍攝時窗邊自然光充足\nPAN 從電視牆緩慢橫搖至落地窗\nCU：電視牆材質特寫（如石皮、木皮紋理）\nCU：燈帶出光細節\nCU：沙發布料紋理特寫',
+      right:'VO：客廳沒有主燈。\n\n這是一個設計師常做的選擇，\n但背後的邏輯是——主燈會讓天花板「降低」，\n間接照明讓光從邊緣漫出來，\n空間的邊界就消失了。\n\n這面電視牆用了石皮，\n是因為屋主不想要家裡「太冷」，\n石材有重量，但選帶木紋感的，就有了溫度。'},
+
+    {type:'key-shot',scene:'S3',shot:'03',duration:'10',
+      left:'RACK FOCUS：從近景植栽拉焦至遠景落地窗\nCU：窗框與戶外景色\nCU：沙發抱枕與毯子的疊放細節（生活感）\nMS 屋主坐在沙發上，自然光打側臉',
+      right:'VO：落地窗是這個家最大的資產。\n設計師沒有做窗簾盒，而是讓軌道藏在天花板裡，\n窗是完整的，光是完整的。'},
+
+    // ── SECTION 4：餐廳 ──
+    {type:'scene-cut',scene:'S4',shot:'01',duration:'4',
+      left:'場次字卡：「餐廳 ── 小空間裡的儀式感」',
+      right:'BGM 持續'},
+
+    {type:'normal',scene:'S4',shot:'02',duration:'15',
+      left:'MS 餐桌全景，強調餐桌與廚房的連結性\nCU：餐桌吊燈光影（如藤編燈、霧面玻璃燈）\nCU：餐椅細節、桌面材質\nCU：吊燈在桌面投射的光圈',
+      right:'VO：20 坪的家，餐廳通常是最難定義的空間。\n它不夠大，卻又不能沒有。\n\n設計師把它往窗邊移，\n讓自然光直接落在桌上。\n吃飯這件事，在這裡變得不一樣了。\n\n那盞吊燈是屋主自己挑的，\n他說：「我想要每次吃飯，都感覺在餐廳。」'},
+
+    {type:'note',scene:'S4',shot:'03',duration:'5',
+      left:'INSERT：桌上擺放咖啡杯、書、植栽的靜物組合\nCU 慢速推進，呈現生活質感',
+      right:'【無旁白，純氛圍畫面】\nBGM 微升，感性時刻'},
+
+    // ── SECTION 5：廚房 ──
+    {type:'scene-cut',scene:'S5',shot:'01',duration:'4',
+      left:'場次字卡：「廚房 ── 消失的收納」',
+      right:'BGM 持續'},
+
+    {type:'normal',scene:'S5',shot:'02',duration:'16',
+      left:'WS 廚房整體，呈現整潔感\nCU：門片一致性（全部隱藏把手）\nCU：按壓式開關門片動作\nCU：中島或流理台石材檯面反光\nCU：抽屜內的收納分隔設計',
+      right:'VO：廚房是最考驗設計的地方，\n因為東西太多，要讓它不亂，\n唯一的方法是讓東西消失。\n\n所有門片統一用了霧面發泡板，\n沒有把手，靠按壓開關，\n所以整面牆看起來是一塊板子，\n不是一個廚房。\n\n檯面選的是人造石，\n不是大理石，是因為屋主真的在用。'},
+
+    {type:'key-shot',scene:'S5',shot:'03',duration:'8',
+      left:'屋主使用廚房的日常動作（生活感）：\n沖水、切菜、取物動作\nCU：水流細節\nCU：刀具入收納架的動作',
+      right:'VO：設計服務的是生活，\n不是拍照。'},
+
+    // ── SECTION 6：臥室 ──
+    {type:'scene-cut',scene:'S6',shot:'01',duration:'4',
+      left:'場次字卡：「臥室 ── 光，是最好的材料」',
+      right:'BGM 轉為更安靜、更輕柔的版本'},
+
+    {type:'normal',scene:'S6',shot:'02',duration:'18',
+      left:'DOLLY IN 從門口緩推進臥室\nCU：窗簾透光的紋理\nCU：床頭板材質（如布面、皮革、木皮）\nCU：床頭燈/壁燈的暖光細節\nWS 臥室整體，強調留白比例\nRANDOM SHOT：自然光在床面形成的光影',
+      right:'VO：臥室只做了一件事——讓光進來。\n\n窗簾選了半透光的材質，\n清晨的光不是刺眼的，是漫進來的，\n會在床面形成很淡的陰影。\n\n床頭沒有吊燈，\n是兩盞壁燈，光往下照，\n讀書的時候，世界只有那一小塊。'},
+
+    {type:'key-shot',scene:'S6',shot:'03',duration:'10',
+      left:'CU：床頭壁燈特寫，光圈細節\nCU：棉被材質、枕頭疊放\nMS：屋主側臥在床，自然光側打（剪影或側臉）\nSLOW MOTION：窗簾因微風輕微飄動',
+      right:'VO：睡眠是這個家最重要的事之一。\n設計師說，他在設計臥室的時候，\n一直在問自己：\n「這個光，值不值得讓人想賴床？」'},
+
+    // ── SECTION 7：衛浴 ──
+    {type:'scene-cut',scene:'S7',shot:'01',duration:'4',
+      left:'場次字卡：「衛浴 ── 日常裡的小奢侈」',
+      right:'BGM 持續'},
+
+    {type:'normal',scene:'S7',shot:'02',duration:'14',
+      left:'WS 衛浴整體\nCU：磁磚花色或石材紋理（主視覺材料）\nCU：龍頭五金細節（如霧黑色、金色）\nCU：水流特寫（慢動作）\nCU：鏡櫃開啟的動作，呈現收納內部',
+      right:'VO：衛浴是屋主說，想要花多一點預算的地方。\n\n他說：每天早上刷牙的時候，\n想要有一點點享受的感覺。\n\n所以磁磚選了有手作感的花磚，\n五金用了霧黑，\n鏡子後面是收納，\n但打開之前，它是一面乾淨的鏡子。'},
+
+    // ── SECTION 8：設計師訪談（可選）──
+    {type:'scene-cut',scene:'S8',shot:'01',duration:'4',
+      left:'場次字卡：「設計師說」\n（若無設計師受訪則跳過此段）',
+      right:'BGM 持續，輕微轉換'},
+
+    {type:'normal',scene:'S8',shot:'02',duration:'20',
+      left:'設計師 MCU，訪談坐姿，背景為空間一隅\n表情自然，非演說式\n搭配 B-roll 插入對應畫面',
+      right:'設計師 OS（同期聲）：\n「20 坪的挑戰不是空間不夠，\n是選擇太多，你必須清楚知道什麼不做。\n\n我一直在問屋主：你真正需要的是什麼？\n不是收納，不是功能，\n而是你每天在這裡，\n想要有什麼感覺。」\n\n（停頓）\n\n「他說：想要回家的感覺。\n這個答案，讓我做了所有的決定。」'},
+
+    // ── SECTION 9：結尾 ──
+    {type:'scene-cut',scene:'S9',shot:'01',duration:'6',
+      left:'空鏡剪輯（結尾版，慢節奏）：\n① 傍晚光線打入客廳的光影\n② 窗外視野（散焦）\n③ 玄關大門從外到內的推鏡\nBGM 漸強後緩落',
+      right:'VO：一個家好不好住，\n不只是材料和工法，\n更多時候，是它有沒有在設計的時候，\n把你的生活放進去。\n\n這個 20 坪，我覺得做到了。'},
+
+    {type:'key-shot',scene:'S9',shot:'02',duration:'10',
+      left:'主持人／屋主 MS 面對鏡頭，輕鬆站姿\n背景為客廳全景，自然光',
+      right:'VO（屋主）：如果你現在也在規劃裝潢，\n不管是 20 坪還是 40 坪，\n有任何想聊的，都可以在留言告訴我。\n\n你最在意的，是哪個空間？'},
+
+    {type:'scene-cut',scene:'S9',shot:'03',duration:'8',
+      left:'結尾字卡動畫：\n「✦ 留言告訴我：你最想改造哪個空間？」\n「👉 訂閱頻道，看更多居家設計開箱」\n頻道 Logo 出現\nBGM 緩緩淡出',
+      right:'VO：我是 [主持人名]，我們下支影片見。\n\nBGM 淡出至靜音'}
+  ]}
+};
+function showTemplates(){
+  document.getElementById('modalContainer').innerHTML='<div class="modal-bg" onclick="closeModal(event)"><div class="modal"><button class="modal-close" onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">✕</button><h2>📋 套用腳本範本</h2><p style="font-size:13px;color:#888;margin-bottom:12px">確定 → 取代全部；取消 → 附加到末尾。</p><div class="template-btns">'+Object.entries(TEMPLATES).map(function(kv){return'<button class="primary" onclick="applyTemplate(\''+kv[0]+'\')">'+kv[1].name+'</button>';}).join('')+'</div></div></div>';
+}
+function applyTemplate(key){
+  var tpl=TEMPLATES[key];if(!tpl)return;
+  var newRows=tpl.rows.map(function(r){return Object.assign({id:uid(),type:'normal',scene:'',shot:'',duration:''},r);});
+  if(confirm('套用「'+tpl.name+'」\n確定 → 取代全部\n取消 → 附加到末尾'))scriptDoc.rows=newRows;
+  else scriptDoc.rows=scriptDoc.rows.concat(newRows);
+  saveDoc();renderBody();showStatus('已套用「'+tpl.name+'」');document.getElementById('modalContainer').innerHTML='';
+}
+
+// ════════════════════════════════════════════════════════════
+// 初始化
+// ════════════════════════════════════════════════════════════
+initDB().then(function(){
+  loadDoc();loadRefMeta();loadNote();
+  renderMeta();renderHead();renderBody();renderRefList();
+  applyColSettings();
+  // 設定列 checkbox 初始狀態
+  ['scene','shot','dur','type'].forEach(function(k){
+    var el=document.getElementById('ck'+k.charAt(0).toUpperCase()+k.slice(1));
+    if(el)el.checked=colSettings[k];
+  });
+  var ckShots=document.getElementById('ckShots');if(ckShots)ckShots.checked=colSettings.shotBar;
+  if(colSettings.shotBar)document.getElementById('shotBar').classList.remove('hidden');
+});
+</script>
+
+<!-- JSZip：解析 .docx 匯入 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<!-- docx.js：Word 匯出，載入後啟用按鈕 -->
+<script>
+(function(){
+  function onReady(){var btn=document.getElementById('btnWord');if(btn){btn.disabled=false;btn.textContent='📄 Word';btn.style.opacity='1';btn.style.cursor='pointer';btn.title='';}}
+  function onErr(){
+    var btn=document.getElementById('btnWord');if(btn)btn.textContent='📄 Word（重試）';
+    var s2=document.createElement('script');s2.src='https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js';s2.onload=onReady;
+    s2.onerror=function(){if(btn){btn.textContent='📄 Word（離線不可用）';btn.disabled=false;btn.style.opacity='0.65';btn.style.cursor='pointer';btn.onclick=function(){alert('Word 匯出需要網路連線載入模組，請連線後重新整理頁面（F5）。\n\n可改用「🖨 PDF」匯出。');};}};
+    document.head.appendChild(s2);
+  }
+  var s=document.createElement('script');s.src='https://unpkg.com/docx@8.5.0/build/index.js';s.onload=onReady;s.onerror=onErr;document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>
