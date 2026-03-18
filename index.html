@@ -1716,6 +1716,46 @@ function importJSONFile(e){
 }
 
 // ── 解析引擎 ──
+
+// 自動依文字內容判斷段落類型
+function autoDetectRowType(left, right){
+  var l=String(left||''), r=String(right||'');
+  var lLow=l.toLowerCase(), rLow=r.toLowerCase();
+
+  // 備註：畫面或聲音含【…】、「備注」「備註」「製作備注」「製作提醒」
+  if(/【[^】]+】/.test(l)||/【[^】]+】/.test(r)||
+     /備[注註]|製作備|製作提醒/.test(l)){
+    return 'note';
+  }
+  // 場景切換：畫面欄出現轉場/切換關鍵字
+  if(/(場次字卡|場景字卡|場景切換|切換|轉場|FADE\s*(IN|OUT|TO)|CUT\s*TO|SMASH\s*CUT|MATCH\s*CUT|DISSOLVE)/i.test(l)){
+    return 'scene-cut';
+  }
+  // 音效提示：聲音欄以 SFX／BGM／音效／音樂 開頭且不含 VO，或畫面以 B-ROLL／空鏡／INSERT 開頭
+  var rLines=r.split('\n');
+  var sfxCount=rLines.filter(function(line){return /^(SFX[:：]|BGM[:：]|音效[:：]|音樂[:：])/i.test(line.trim());}).length;
+  var voCount=rLines.filter(function(line){return /^(VO[:：]|旁白[:：])/i.test(line.trim());}).length;
+  if((sfxCount>0&&voCount===0)||(/(^|\n)(B-ROLL|B ROLL|空鏡|INSERT|CUTAWAY|CUTAWAY)/i.test(l)&&voCount===0)){
+    return 'sfx';
+  }
+  // 重點鏡頭：畫面欄含特寫鏡頭關鍵字，或聲音欄以 VO 為主
+  if(/(ECU|CU[:：\s]|RACK\s*FOCUS|EXTREME\s*CLOSE|重點鏡頭|KEY\s*SHOT)/i.test(l)){
+    return 'key-shot';
+  }
+  if(voCount>0&&sfxCount===0&&rLines.length<=3){
+    return 'key-shot';
+  }
+  return 'normal';
+}
+
+// 將 autoDetectRowType 套用到整批 rows
+function applyAutoType(rows){
+  return rows.map(function(row){
+    if(row.type&&row.type!=='normal')return row; // 已有明確類型則保留
+    return Object.assign({},row,{type:autoDetectRowType(row.left,row.right)});
+  });
+}
+
 function parseMarkdownTable(raw){
   var lines=raw.split('\n'),tableLines=lines.filter(function(l){return/\|/.test(l);});
   if(tableLines.length<2)return null;
@@ -1729,7 +1769,8 @@ function parseMarkdownTable(raw){
   if(leftCol<0)leftCol=0;if(rightCol<0||rightCol===leftCol)rightCol=leftCol===0?1:0;
   function stripMd(s){return String(s||'').replace(/\*\*(.+?)\*\*/g,'$1').replace(/__(.+?)__/g,'$1').replace(/_(.+?)_/g,'$1').replace(/`(.+?)`/g,'$1').replace(/<br\s*\/?>/gi,'\n').trim();}
   var rows=[];for(var i=headerIdx+1;i<tableLines.length;i++){if(sepRe.test(tableLines[i]))continue;var cells=parseCells(tableLines[i]);if(!cells.length)continue;var left=stripMd(cells[leftCol]||''),right=stripMd(cells[rightCol]||'');if(left||right)rows.push({id:uid(),type:'normal',scene:'',shot:'',duration:'',left:left,right:right});}
-  return rows.length?{rows:rows,mode:'markdown'}:null;
+  if(!rows.length)return null;
+  return{rows:applyAutoType(rows),mode:'markdown'};
 }
 function parseKeywordText(raw){
   var lines=raw.split('\n'),leftKW=/^(畫面[:：]|場景[:：]|鏡頭[:：]|視覺[:：])/,rightKW=/^(聲音[:：]|旁白[:：]|VO[:：]|台詞[:：]|SFX[:：]|音效[:：]|音樂[:：]|字卡[:：]|BGM[:：])/;
@@ -1739,12 +1780,14 @@ function parseKeywordText(raw){
     if(leftKW.test(lt)){cur.left+=(cur.left?'\n':'')+lt.replace(leftKW,'').trim();has=true;lastSide='left';}
     else if(rightKW.test(lt)){cur.right+=(cur.right?'\n':'')+lt.replace(rightKW,'').trim();has=true;lastSide='right';}
     else{if(lastSide==='right')cur.right+='\n'+lt;else cur.left+=(cur.left?'\n':'')+lt;has=true;}
-  });if(has)rows.push(cur);return rows.length?{rows:rows,mode:'keyword'}:null;
+  });if(has)rows.push(cur);
+  if(!rows.length)return null;
+  return{rows:applyAutoType(rows),mode:'keyword'};
 }
 function parseLooseText(raw){
   var paras=raw.split(/\n\s*\n/).map(function(p){return p.trim();}).filter(Boolean);if(!paras.length)return null;
   var rows=[];for(var i=0;i<paras.length;i+=2)rows.push({id:uid(),type:'normal',scene:'',shot:'',duration:'',left:paras[i]||'',right:paras[i+1]||''});
-  return{rows:rows,mode:'loose'};
+  return{rows:applyAutoType(rows),mode:'loose'};
 }
 function parseTextAuto(raw){
   var md=parseMarkdownTable(raw);if(md)return md;
@@ -1753,9 +1796,24 @@ function parseTextAuto(raw){
   return parseLooseText(raw);
 }
 function modeLabel(mode){return{markdown:'Markdown 表格',keyword:'關鍵字標記',loose:'段落輪替'}[mode]||mode;}
+var TYPE_BADGE_COLOR={'normal':'#aaa','scene-cut':'#888','key-shot':'#b8860b','sfx':'#1a6fa0','note':'#4a7c4e'};
+var TYPE_BADGE_BG={'normal':'#f0f0f0','scene-cut':'#f0f0f0','key-shot':'#fffde7','sfx':'#e8f4fd','note':'#f0faf0'};
 function buildPreviewTable(rows){
   var p=rows.slice(0,5),more=rows.length>5?'<p style="font-size:11px;color:#999;margin-top:4px">…還有 '+(rows.length-5)+' 列</p>':'';
-  return'<table class="preview-table"><tr><th style="width:50%">畫面</th><th>聲音／字幕</th></tr>'+p.map(function(r){return'<tr><td>'+escHtml(r.left)+'</td><td>'+escHtml(r.right)+'</td></tr>';}).join('')+'</table>'+more;
+  var TYPE_LBL_MAP={'normal':'一般','scene-cut':'場景切換','key-shot':'重點鏡頭','sfx':'音效提示','note':'備註','chapter':'章節'};
+  return'<table class="preview-table"><tr>'+
+    '<th style="width:14%">類型</th>'+
+    '<th style="width:43%">畫面</th>'+
+    '<th>聲音／字幕</th>'+
+    '</tr>'+
+    p.map(function(r){
+      var t=r.type||'normal';
+      var badge='<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:'+
+        (TYPE_BADGE_BG[t]||'#f0f0f0')+';">'+
+        '<span style="color:'+(TYPE_BADGE_COLOR[t]||'#aaa')+'">'+
+        (TYPE_LBL_MAP[t]||t)+'</span></span>';
+      return'<tr><td style="text-align:center">'+badge+'</td><td>'+escHtml(r.left)+'</td><td>'+escHtml(r.right)+'</td></tr>';
+    }).join('')+'</table>'+more;
 }
 function previewPaste(){
   var raw=document.getElementById('pasteImport').value.trim();
@@ -1790,7 +1848,7 @@ function importDocxInput(e){
         var lkh=/(畫面|場景|鏡頭|視覺|image|video)/i,rkh=/(聲音|旁白|台詞|音效|音樂|vo|sfx|audio|bgm)/i;if(ft.some(function(t){return lkh.test(t)||rkh.test(t);}))startRow=1;
         var lc=0,rc=1;if(startRow===1){ft.forEach(function(t,i){if(lkh.test(t)&&lc===0&&i!==rc)lc=i;if(rkh.test(t)&&rc===1&&i!==lc)rc=i;});}
         for(var i=startRow;i<trs.length;i++){var cells=Array.from(trs[i].querySelectorAll('tc'));var left=cells[lc]?getXmlText(cells[lc]).trim():'';var right=cells[rc]?getXmlText(cells[rc]).trim():'';if(left||right)rows.push({id:uid(),type:'normal',scene:'',shot:'',duration:'',left:left,right:right});}
-        if(rows.length)mode='table';}}
+        if(rows.length){rows=applyAutoType(rows);mode='table';}}
     if(!rows.length){var hasCol=false;xd.querySelectorAll('sectPr').forEach(function(s){var cols=s.querySelector('cols');if(cols){var n=parseInt(cols.getAttribute('w:num')||cols.getAttribute('num')||'1',10);if(n>1)hasCol=true;}});
       if(hasCol){statusEl.innerHTML='<div class="warn-box">⚠️ <strong>偵測到 Word 版面分欄</strong><br>版面分欄無法準確轉換。建議改用「插入表格」格式後再匯入。</div>';return;}
       var paras=xd.querySelectorAll('p'),pts=[];paras.forEach(function(p){var t=getXmlText(p).trim();if(t)pts.push(t);});var raw=pts.join('\n');
