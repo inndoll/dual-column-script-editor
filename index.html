@@ -273,6 +273,7 @@ textarea:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95
     <label><input type="checkbox" id="ckShot" onchange="toggleCol('shot',this.checked)"> 鏡號</label>
     <label><input type="checkbox" id="ckDur" onchange="toggleCol('dur',this.checked)"> 時間</label>
     <label><input type="checkbox" id="ckType" onchange="toggleTypeCol(this.checked)"> 段落類型</label>
+    <button onclick="showAutoNumberModal()" style="font-size:11px;padding:3px 9px;margin-left:4px" title="自動填入場次與鏡號編號">⟳ 自動編號</button>
   </div>
   <div class="settings-sep"></div>
   <div class="settings-group">
@@ -501,6 +502,139 @@ function insertChapterRow(){
     if(inp){inp.focus();inp.select();}
   },50);
   showStatus('已插入章節標題',900);
+}
+
+// ── 場次 / 鏡號自動編號 ──────────────────────────────────────
+function showAutoNumberModal(){
+  document.getElementById('modalContainer').innerHTML=
+    '<div class="modal-bg" onclick="closeModal(event)">'+
+    '<div class="modal" style="max-width:480px">'+
+      '<button class="modal-close" onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">✕</button>'+
+      '<h2>⟳ 場次 / 鏡號自動編號</h2>'+
+
+      '<p style="font-size:13px;font-weight:600;color:#555;margin-bottom:10px">場次編號方式</p>'+
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">'+
+        '<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;padding:9px 12px;border:1px solid #ddd;border-radius:8px">'+
+          '<input type="radio" name="sceneMode" value="keep" checked style="margin-top:2px;accent-color:#185FA5"> '+
+          '<div><strong style="display:block">保留現有場次，只重排鏡號</strong>'+
+            '<span style="font-size:11px;color:#888;display:block">不修改場次欄，每個場次內的鏡號從 01 重新排列</span></div>'+
+        '</label>'+
+        '<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;padding:9px 12px;border:1px solid #ddd;border-radius:8px">'+
+          '<input type="radio" name="sceneMode" value="chapter" style="margin-top:2px;accent-color:#185FA5"> '+
+          '<div><strong style="display:block">依章節自動編場次 + 鏡號</strong>'+
+            '<span style="font-size:11px;color:#888;display:block">以章節標題為分界，場次依序填入 A、B、C…，每章節鏡號從 01 重新開始</span></div>'+
+        '</label>'+
+        '<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;padding:9px 12px;border:1px solid #ddd;border-radius:8px">'+
+          '<input type="radio" name="sceneMode" value="reset" style="margin-top:2px;accent-color:#185FA5"> '+
+          '<div><strong style="display:block">全部重設為單一場次</strong>'+
+            '<span style="font-size:11px;color:#888;display:block">所有列填入同一場次代號，鏡號從 01 連續排下去</span></div>'+
+        '</label>'+
+      '</div>'+
+
+      '<p style="font-size:13px;font-weight:600;color:#555;margin-bottom:8px">場次代號格式</p>'+
+      '<div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap">'+
+        '<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">'+
+          '<input type="radio" name="sceneFmt" value="alpha" checked style="accent-color:#185FA5"> 英文字母（A、B、C…）'+
+        '</label>'+
+        '<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">'+
+          '<input type="radio" name="sceneFmt" value="numeric" style="accent-color:#185FA5"> 數字（S1、S2、S3…）'+
+        '</label>'+
+      '</div>'+
+
+      '<p style="font-size:13px;font-weight:600;color:#555;margin-bottom:8px">鏡號格式</p>'+
+      '<div style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap">'+
+        '<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">'+
+          '<input type="radio" name="shotFmt" value="2digit" checked style="accent-color:#185FA5"> 兩位數（01、02…）'+
+        '</label>'+
+        '<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">'+
+          '<input type="radio" name="shotFmt" value="3digit" style="accent-color:#185FA5"> 三位數（001、002…）'+
+        '</label>'+
+        '<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">'+
+          '<input type="radio" name="shotFmt" value="plain" style="accent-color:#185FA5"> 純數字（1、2…）'+
+        '</label>'+
+      '</div>'+
+
+      '<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:8px 12px;font-size:12px;color:#7a6000;margin-bottom:16px">'+
+        '⚠ 此操作會覆蓋現有場次和鏡號欄位（章節標題列不受影響）。建議先用「↓ JSON」備份。'+
+      '</div>'+
+
+      '<div style="display:flex;gap:10px;justify-content:flex-end">'+
+        '<button onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">取消</button>'+
+        '<button class="primary" onclick="runAutoNumber()">✓ 套用自動編號</button>'+
+      '</div>'+
+    '</div></div>';
+}
+
+function runAutoNumber(){
+  // 讀取選項
+  var sceneMode='keep';
+  document.querySelectorAll('input[name="sceneMode"]').forEach(function(r){if(r.checked)sceneMode=r.value;});
+  var sceneFmt='alpha';
+  document.querySelectorAll('input[name="sceneFmt"]').forEach(function(r){if(r.checked)sceneFmt=r.value;});
+  var shotFmt='2digit';
+  document.querySelectorAll('input[name="shotFmt"]').forEach(function(r){if(r.checked)shotFmt=r.value;});
+
+  // 場次標籤（0-based index）
+  function sceneLabel(idx){
+    if(sceneFmt==='numeric')return 'S'+(idx+1);
+    // 英文字母：A B C … Z AA AB …
+    var s='',n=idx;
+    do{s=String.fromCharCode(65+(n%26))+s;n=Math.floor(n/26)-1;}while(n>=0);
+    return s;
+  }
+  // 鏡號格式
+  function shotLabel(n){
+    if(shotFmt==='3digit')return String(n).padStart(3,'0');
+    if(shotFmt==='plain') return String(n);
+    return String(n).padStart(2,'0');
+  }
+
+  if(sceneMode==='reset'){
+    // 全部同一場次，鏡號連續
+    var sc=sceneLabel(0),shotIdx=1;
+    scriptDoc.rows.forEach(function(row){
+      if(row.type==='chapter')return;
+      row.scene=sc;
+      row.shot=shotLabel(shotIdx++);
+    });
+
+  } else if(sceneMode==='chapter'){
+    // 以章節標題為分界，自動分場次
+    var scIdx=0,shotIdx=1,started=false;
+    scriptDoc.rows.forEach(function(row){
+      if(row.type==='chapter'){
+        if(started)scIdx++;   // 遇到章節標題：切換到下一場次
+        shotIdx=1;
+        started=true;
+        return;
+      }
+      if(!started)started=true; // 第一個章節前的列屬於第 0 場次
+      row.scene=sceneLabel(scIdx);
+      row.shot=shotLabel(shotIdx++);
+    });
+
+  } else {
+    // keep：保留場次，每個場次內的鏡號獨立從 1 重排
+    // 依出現順序收集不重複的場次
+    var sceneOrder=[],seenScenes={};
+    scriptDoc.rows.forEach(function(row){
+      if(row.type==='chapter')return;
+      var sc=String(row.scene||'（空白）');
+      if(!seenScenes[sc]){seenScenes[sc]=true;sceneOrder.push(sc);}
+    });
+    // 每個場次的鏡號計數器
+    var counters={};
+    sceneOrder.forEach(function(sc){counters[sc]=1;});
+    scriptDoc.rows.forEach(function(row){
+      if(row.type==='chapter')return;
+      var sc=String(row.scene||'（空白）');
+      row.shot=shotLabel(counters[sc]++);
+    });
+  }
+
+  saveDoc();renderBody();
+  showStatus('自動編號完成 ✓',1500);
+  document.getElementById('modalContainer').innerHTML='';
 }
 
 function toggleCol(col,val){
