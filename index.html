@@ -225,7 +225,7 @@ textarea:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95
   <button onclick="exportJSON()">↓ JSON</button>
   <div class="toolbar-sep"></div>
   <button onclick="showExportModal('pdf')" class="primary">🖨 PDF</button>
-  <button id="btnWord" onclick="showExportModal('docx')" class="primary" disabled style="opacity:0.55;cursor:default" title="正在載入模組…">📄 Word 載入中…</button>
+  <button id="btnWord" onclick="showExportModal('docx')" class="primary">📄 Word</button>
   <div class="toolbar-sep"></div>
   <button onclick="showGuide()">？ 指南</button>
   <button onclick="showTemplates()">📋 範本</button>
@@ -927,55 +927,26 @@ function doPdfExport(opts){
   },100);
 }
 
-// ── Word 匯出 ──
+// ── Word 匯出（純 JSZip 手工組裝，不依賴 docx.js，永遠可用）──
 function doDocxExport(opts){
-  if(typeof docx==='undefined'){showStatus('Word 模組尚未載入，請稍候或重新整理',3000);return;}
+  if(typeof JSZip==='undefined'){
+    showStatus('JSZip 尚未載入，請稍候重試',2500);
+    return;
+  }
   showStatus('正在產生 Word 文件…',3000);
+
   try{
-    var D=docx;
-    var isProposal=opts.mode==='proposal';
-    var fontSize=isProposal?26:22; // 13pt vs 11pt
-    var cellPad=isProposal?{top:140,bottom:140,left:160,right:160}:{top:100,bottom:100,left:130,right:130};
-
-    function bdr(c,sz){return{style:D.BorderStyle.SINGLE,size:sz||4,color:c};}
-    function bdrs(c,sz){return{top:bdr(c,sz),bottom:bdr(c,sz),left:bdr(c,sz),right:bdr(c,sz)};}
-    var gridBdr=isProposal?bdrs('FFFFFF',2):bdrs('CCCCCC');
-    var hdrBdr=isProposal?bdrs('333333',8):bdrs('999999');
-
-    function makeParas(text,isHdr){
-      return String(text||'').split('\n').map(function(l,i,a){
-        return new D.Paragraph({children:[new D.TextRun({text:l,size:isHdr?fontSize+4:fontSize,bold:isHdr,font:'微軟正黑體'})],spacing:{after:i<a.length-1?100:0,line:isProposal?360:280,lineRule:D.LineRuleType?D.LineRuleType.EXACT:undefined}});
-      });
-    }
-    function makeCell(text,isHdr,w,bg){
-      return new D.TableCell({
-        borders:isHdr?hdrBdr:gridBdr,
-        width:{size:w,type:D.WidthType.DXA},
-        shading:{fill:bg||(isHdr?'E8EFF7':'FFFFFF'),type:D.ShadingType.CLEAR},
-        margins:cellPad,verticalAlign:D.VerticalAlign.TOP,
-        children:makeParas(text,isHdr)
-      });
-    }
-    function makeMiniCell(text,isHdr,w,bg){
-      return new D.TableCell({
-        borders:isHdr?hdrBdr:gridBdr,
-        width:{size:w,type:D.WidthType.DXA},
-        shading:{fill:bg||(isHdr?'E8EFF7':'FAFAFA'),type:D.ShadingType.CLEAR},
-        margins:{top:80,bottom:80,left:80,right:80},verticalAlign:D.VerticalAlign.TOP,
-        children:[new D.Paragraph({alignment:D.AlignmentType.CENTER,children:[new D.TextRun({text:String(text||''),size:isHdr?20:18,bold:isHdr,font:'微軟正黑體',color:isHdr?'333333':'666666'})]})]
-      });
-    }
+    var isProposal = opts.mode==='proposal';
+    // DXA 單位 (1 inch = 1440 dxa)
+    var PAGE_W=11906, PAGE_H=16838, MARGIN=1134;
+    var TABLE_W=PAGE_W-MARGIN*2; // 9638
 
     // 計算欄寬
-    var pageW=11906,margin=1134,tableW=pageW-margin*2;
-    var usedW=0;
-    var numW=440;usedW+=numW;
-    var typeW=opts.type?900:0;usedW+=typeW;
-    var sceneW=opts.scene?700:0;usedW+=sceneW;
-    var shotW=opts.shot?700:0;usedW+=shotW;
-    var durW=opts.dur?700:0;usedW+=durW;
-    var remaining=tableW-usedW;
-    var leftW=Math.round(remaining*0.55),rightW=remaining-leftW;
+    var numW=440, typeW=opts.type?900:0, sceneW=opts.scene?700:0, shotW=opts.shot?700:0, durW=opts.dur?700:0;
+    var used=numW+typeW+sceneW+shotW+durW;
+    var rem=TABLE_W-used;
+    var leftW=Math.round(rem*0.55), rightW=rem-leftW;
+
     var colWidths=[numW];
     if(opts.type)colWidths.push(typeW);
     if(opts.scene)colWidths.push(sceneW);
@@ -983,70 +954,228 @@ function doDocxExport(opts){
     if(opts.dur)colWidths.push(durW);
     colWidths.push(leftW,rightW);
 
-    // 型別色對照
-    var typeBgs={normal:'FFFFFF','scene-cut':'F0F0F0','key-shot':'FFFDE7','sfx':'E8F4FD','note':'F0FAF0'};
-    var typeLabels={'normal':'一般','scene-cut':'場景切換','key-shot':'重點鏡頭','sfx':'音效提示','note':'備註'};
+    // 字型與字級 (half-points)
+    var bodySize = isProposal?26:22;
+    var hdrSize  = isProposal?30:26;
+    var titleSize= isProposal?48:36;
+    var metaSize = isProposal?22:20;
 
-    // 表頭
-    var hdrCells=[makeMiniCell('#',true,numW,'D0D8E8')];
-    if(opts.type)hdrCells.push(makeCell('類型',true,typeW,'DDE6F4'));
-    if(opts.scene)hdrCells.push(makeMiniCell('場次',true,sceneW,'DDE6F4'));
-    if(opts.shot)hdrCells.push(makeMiniCell('鏡號',true,shotW,'DDE6F4'));
-    if(opts.dur)hdrCells.push(makeMiniCell('時間',true,durW,'DDE6F4'));
-    hdrCells.push(makeCell('畫面',true,leftW,'DDE6F4'));
+    // 儲存格內距 (dxa)
+    var PAD = isProposal ? 140 : 100;
+    var PAD_SIDE = isProposal ? 160 : 130;
+
+    // 背景色對照
+    var TYPE_BG = {'normal':'FFFFFF','scene-cut':'F0F0F0','key-shot':'FFFDE7','sfx':'E8F4FD','note':'F0FAF0'};
+    var TYPE_LBL= {'normal':'一般','scene-cut':'場景切換','key-shot':'重點鏡頭','sfx':'音效提示','note':'備註'};
+
+    // ── XML 工具函式 ──────────────────────────────────────────
+    function xmlEsc(s){
+      return String(s||'')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+    }
+
+    // 單一 run（不換行版）
+    function makeRun(text, bold, sizeHp, color, font){
+      font = font||'微軟正黑體';
+      var rpr = '<w:rPr>'+
+        '<w:rFonts w:ascii="'+font+'" w:hAnsi="'+font+'" w:cs="'+font+'"/>'+
+        '<w:sz w:val="'+sizeHp+'"/><w:szCs w:val="'+sizeHp+'"/>'+
+        (bold?'<w:b/><w:bCs/>':'')+
+        (color?'<w:color w:val="'+color+'"/>':'')+
+        '</w:rPr>';
+      return '<w:r>'+rpr+'<w:t xml:space="preserve">'+xmlEsc(text)+'</w:t></w:r>';
+    }
+
+    // 段落（支援換行文字）→ 多個 <w:p>
+    function makeParas(text, bold, sizeHp, color, align, spacingAfter, lineVal){
+      var lines = String(text||'').split('\n');
+      var spacing = '<w:spacing w:after="'+(spacingAfter||0)+'"'+(lineVal?' w:line="'+lineVal+'" w:lineRule="exact"':'')+'/>';
+      return lines.map(function(line,i){
+        var ppr = '<w:pPr>'+
+          (align?'<w:jc w:val="'+align+'"/>':'')+
+          spacing+
+          '</w:pPr>';
+        return '<w:p>'+ppr+makeRun(line,bold,sizeHp,color)+'</w:p>';
+      }).join('');
+    }
+
+    // 邊框 XML
+    function borderXml(color, sz){
+      sz = sz||4;
+      var b = '<w:val w:val="single" w:sz="'+sz+'" w:space="0" w:color="'+color+'"/>';
+      return '<w:top'+b+'<w:left'+b+'<w:bottom'+b+'<w:right'+b;
+    }
+
+    // 儲存格（支援多行文字）
+    function makeCell(text, isHdr, w, bg, align, miniFont){
+      bg = bg || (isHdr?'E8EFF7':'FFFFFF');
+      var bdrColor = isHdr ? (isProposal?'333333':'999999') : (isProposal?'FFFFFF':'CCCCCC');
+      var bdrSz    = isHdr ? (isProposal?8:6) : (isProposal?2:4);
+      var sz       = miniFont ? (isHdr?20:18) : (isHdr?hdrSize:bodySize);
+      var lineVal  = isProposal?360:0;
+      var spacingAfter = isProposal?100:0;
+
+      var cellPadXml = '<w:tcMar>'+
+        '<w:top w:w="'+PAD+'" w:type="dxa"/>'+
+        '<w:bottom w:w="'+PAD+'" w:type="dxa"/>'+
+        '<w:left w:w="'+(miniFont?80:PAD_SIDE)+'" w:type="dxa"/>'+
+        '<w:right w:w="'+(miniFont?80:PAD_SIDE)+'" w:type="dxa"/>'+
+        '</w:tcMar>';
+      var vAlign = '<w:vAlign w:val="top"/>';
+      var shading = '<w:shd w:val="clear" w:color="auto" w:fill="'+bg+'"/>';
+      var borders = '<w:tcBorders>'+borderXml(bdrColor,bdrSz)+'</w:tcBorders>';
+      var tcPr = '<w:tcPr><w:tcW w:w="'+w+'" w:type="dxa"/>'+borders+shading+cellPadXml+vAlign+'</w:tcPr>';
+
+      var content = makeParas(text, isHdr, sz, isHdr?(isProposal?'222222':'333333'):'111111', miniFont?'center':undefined, spacingAfter, lineVal||undefined);
+
+      return '<w:tc>'+tcPr+content+'</w:tc>';
+    }
+
+    // 表格列
+    function makeRow(cells, isHdr){
+      var trPr = isHdr ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
+      return '<w:tr>'+trPr+cells.join('')+'</w:tr>';
+    }
+
+    // ── 組裝 document.xml ────────────────────────────────────
+    var colWidthXml = colWidths.map(function(w){return '<w:gridCol w:w="'+w+'"/>';}).join('');
+
+    // 邊框設定（表格整體）
+    var tblBdrColor = isProposal?'FFFFFF':'AAAAAA';
+    var tblBdrSz    = isProposal?2:4;
+    var tblBorders  = '<w:tblBorders>'+borderXml(tblBdrColor,tblBdrSz)+'</w:tblBorders>';
+    var tblPr = '<w:tblPr>'+
+      '<w:tblW w:w="'+TABLE_W+'" w:type="dxa"/>'+
+      tblBorders+
+      '<w:tblLook w:val="0000"/>'+
+      '</w:tblPr>';
+    var tblGrid = '<w:tblGrid>'+colWidthXml+'</w:tblGrid>';
+
+    // 表頭列
+    var hdrCells = [makeCell('#',true,numW,'D0D8E8',undefined,true)];
+    if(opts.type)  hdrCells.push(makeCell('類型',  true,typeW, 'DDE6F4'));
+    if(opts.scene) hdrCells.push(makeCell('場次',  true,sceneW,'DDE6F4',undefined,true));
+    if(opts.shot)  hdrCells.push(makeCell('鏡號',  true,shotW, 'DDE6F4',undefined,true));
+    if(opts.dur)   hdrCells.push(makeCell('時間',  true,durW,  'DDE6F4',undefined,true));
+    hdrCells.push(makeCell('畫面',true,leftW, 'DDE6F4'));
     hdrCells.push(makeCell('聲音',true,rightW,'DDE6F4'));
-    var headerRow=new D.TableRow({children:hdrCells});
+    var headerRowXml = makeRow(hdrCells,true);
 
     // 資料列
-    var dataRows=scriptDoc.rows.map(function(row,i){
-      var bg=typeBgs[row.type||'normal']||'FFFFFF';
-      var cells=[makeMiniCell(String(i+1),false,numW,'F8F8F8')];
-      if(opts.type)cells.push(makeCell(typeLabels[row.type||'normal']||'一般',false,typeW,bg));
-      if(opts.scene)cells.push(makeMiniCell(row.scene||'',false,sceneW,bg));
-      if(opts.shot)cells.push(makeMiniCell(row.shot||'',false,shotW,bg));
-      if(opts.dur)cells.push(makeMiniCell(row.duration||'',false,durW,bg));
-      cells.push(new D.TableCell({borders:gridBdr,width:{size:leftW,type:D.WidthType.DXA},shading:{fill:bg,type:D.ShadingType.CLEAR},margins:cellPad,verticalAlign:D.VerticalAlign.TOP,children:makeParas(row.left,false)}));
-      cells.push(new D.TableCell({borders:gridBdr,width:{size:rightW,type:D.WidthType.DXA},shading:{fill:bg,type:D.ShadingType.CLEAR},margins:cellPad,verticalAlign:D.VerticalAlign.TOP,children:makeParas(row.right,false)}));
-      return new D.TableRow({children:cells});
-    });
+    var dataRowsXml = scriptDoc.rows.map(function(row,i){
+      var bg = TYPE_BG[row.type||'normal']||'FFFFFF';
+      var cells = [makeCell(String(i+1),false,numW,'F8F8F8',undefined,true)];
+      if(opts.type)  cells.push(makeCell(TYPE_LBL[row.type||'normal']||'一般',false,typeW,bg));
+      if(opts.scene) cells.push(makeCell(row.scene||'',false,sceneW,bg,undefined,true));
+      if(opts.shot)  cells.push(makeCell(row.shot||'',false,shotW,bg,undefined,true));
+      if(opts.dur)   cells.push(makeCell(row.duration||'',false,durW,bg,undefined,true));
+      cells.push(makeCell(row.left||'',false,leftW,bg));
+      cells.push(makeCell(row.right||'',false,rightW,bg));
+      return makeRow(cells,false);
+    }).join('');
+
+    var tableXml = '<w:tbl>'+tblPr+tblGrid+headerRowXml+dataRowsXml+'</w:tbl>';
 
     // 文件標頭段落
-    var metaLines=[
+    var metaLines = [
       scriptDoc.title&&('腳本標題：'+scriptDoc.title),
       scriptDoc.project&&('專案名稱：'+scriptDoc.project),
       (scriptDoc.author||scriptDoc.version)&&('作者：'+(scriptDoc.author||'')+'　版本：'+(scriptDoc.version||'')+'　日期：'+(scriptDoc.date||'')),
       scriptDoc.notes&&('備註：'+scriptDoc.notes)
     ].filter(Boolean);
-
-    // 若提案版，總時長附在末尾
     if(isProposal&&opts.dur){
-      var total=0;scriptDoc.rows.forEach(function(r){total+=parseDuration(r.duration);});
-      if(total)metaLines.push('總時長：'+formatDuration(total));
+      var tot=0;scriptDoc.rows.forEach(function(r){tot+=parseDuration(r.duration);});
+      if(tot)metaLines.push('總時長：'+formatDuration(tot));
     }
 
-    var children=[
-      new D.Paragraph({children:[new D.TextRun({text:scriptDoc.title||'腳本',size:isProposal?48:36,bold:true,font:'微軟正黑體'})],spacing:{after:isProposal?200:160}})
-    ];
-    metaLines.forEach(function(t){
-      children.push(new D.Paragraph({children:[new D.TextRun({text:t,size:isProposal?22:20,font:'微軟正黑體',color:'666666'})],spacing:{after:80}}));
-    });
-    children.push(new D.Paragraph({children:[new D.TextRun({text:'',size:22})],spacing:{after:280}}));
-    children.push(new D.Table({width:{size:tableW,type:D.WidthType.DXA},columnWidths:colWidths,rows:[headerRow].concat(dataRows)}));
+    var bodyXml =
+      makeParas(scriptDoc.title||'腳本', true, titleSize, '111111', undefined, isProposal?200:160)+
+      metaLines.map(function(t){return makeParas(t,false,metaSize,'888888',undefined,80);}).join('')+
+      '<w:p><w:pPr><w:spacing w:after="240"/></w:pPr></w:p>'+
+      tableXml;
 
-    var docObj=new D.Document({sections:[{
-      properties:{page:{size:{width:11906,height:16838},margin:{top:margin,right:margin,bottom:margin,left:margin}}},
-      children:children
-    }]});
+    // 頁面設定
+    var sectPr = '<w:sectPr>'+
+      '<w:pgSz w:w="'+PAGE_W+'" w:h="'+PAGE_H+'"/>'+
+      '<w:pgMar w:top="'+MARGIN+'" w:right="'+MARGIN+'" w:bottom="'+MARGIN+'" w:left="'+MARGIN+'" w:header="0" w:footer="0" w:gutter="0"/>'+
+      '</w:sectPr>';
 
-    D.Packer.toBuffer(docObj).then(function(buf){
-      var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-      var a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download=(scriptDoc.title||'腳本')+(opts.mode==='proposal'?'_提案版':'_工作版')+'.docx';
+    var documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"'+
+      ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'+
+      ' xmlns:o="urn:schemas-microsoft-com:office:office"'+
+      ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'+
+      ' xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'+
+      ' xmlns:v="urn:schemas-microsoft-com:vml"'+
+      ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"'+
+      ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'+
+      ' xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"'+
+      ' mc:Ignorable="w14 wp14">'+
+      '<w:body>'+bodyXml+sectPr+'</w:body>'+
+      '</w:document>';
+
+    // ── 其他必要 XML 檔案 ─────────────────────────────────────
+    var contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+      '<Default Extension="xml" ContentType="application/xml"/>'+
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'+
+      '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'+
+      '</Types>';
+
+    var relsMain = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'+
+      '</Relationships>';
+
+    var relsWord = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'+
+      '</Relationships>';
+
+    // 基本樣式（含中文字型設定）
+    var stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'+
+      '<w:docDefaults><w:rPrDefault><w:rPr>'+
+      '<w:rFonts w:ascii="微軟正黑體" w:hAnsi="微軟正黑體" w:cs="微軟正黑體"/>'+
+      '<w:sz w:val="'+bodySize+'"/><w:szCs w:val="'+bodySize+'"/>'+
+      '<w:lang w:val="zh-TW" w:eastAsia="zh-TW"/>'+
+      '</w:rPr></w:rPrDefault></w:docDefaults>'+
+      '<w:style w:type="paragraph" w:styleId="Normal" w:default="1">'+
+      '<w:name w:val="Normal"/>'+
+      '<w:pPr><w:spacing w:after="0"/></w:pPr>'+
+      '</w:style>'+
+      '</w:styles>';
+
+    // ── 用 JSZip 組裝 ─────────────────────────────────────────
+    var zip = new JSZip();
+    zip.file('[Content_Types].xml', contentTypes);
+    zip.file('_rels/.rels', relsMain);
+    zip.file('word/document.xml', documentXml);
+    zip.file('word/styles.xml', stylesXml);
+    zip.file('word/_rels/document.xml.rels', relsWord);
+
+    zip.generateAsync({
+      type:'blob',
+      mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      compression:'DEFLATE',
+      compressionOptions:{level:6}
+    }).then(function(blob){
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (scriptDoc.title||'腳本')+(opts.mode==='proposal'?'_提案版':'_工作版')+'.docx';
       a.click();
       showStatus('Word 文件已下載 ✓',2000);
+    }).catch(function(e){
+      console.error(e);
+      showStatus('匯出失敗：'+e.message,4000);
     });
-  }catch(e){console.error(e);showStatus('匯出失敗：'+e.message,4000);}
+
+  }catch(e){
+    console.error(e);
+    showStatus('匯出失敗：'+e.message,4000);
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1262,7 +1391,7 @@ function showGuide(){
           '<li>「包含欄位」可單獨控制場次、鏡號、時間、段落類型是否出現在匯出文件，與畫面上的顯示設定無關。</li>'+
           '<li>PDF 匯出使用瀏覽器列印，選「另存為 PDF」，建議設定 <strong>A4 直式、不縮放、不加頁首頁尾</strong>。</li>'+
           '<li>Word 匯出為真正的 .docx 表格格式，可用 Microsoft Word 開啟編輯，檔名會自動加上「_工作版」或「_提案版」後綴。</li>'+
-          '<li><strong>Word 匯出需要網路連線</strong>（載入 docx.js 模組約 1.5MB）。按鈕顯示「載入中」時請稍候，變回「📄 Word」即可使用。離線時建議改用 PDF 匯出。</li>'+
+          '<li>Word 匯出使用 JSZip 直接組裝 .docx 格式，<strong>完全離線可用，不需網路連線</strong>，任何時候都可以匯出。</li>'+
         '</ul>'+
       '</div>'+
 
@@ -1498,21 +1627,7 @@ initDB().then(function(){
 });
 </script>
 
-<!-- JSZip：解析 .docx 匯入 -->
+<!-- JSZip：解析 .docx 匯入 及 Word 匯出（純離線，不需外部 docx.js） -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
-<!-- docx.js：Word 匯出，載入後啟用按鈕 -->
-<script>
-(function(){
-  function onReady(){var btn=document.getElementById('btnWord');if(btn){btn.disabled=false;btn.textContent='📄 Word';btn.style.opacity='1';btn.style.cursor='pointer';btn.title='';}}
-  function onErr(){
-    var btn=document.getElementById('btnWord');if(btn)btn.textContent='📄 Word（重試）';
-    var s2=document.createElement('script');s2.src='https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js';s2.onload=onReady;
-    s2.onerror=function(){if(btn){btn.textContent='📄 Word（離線不可用）';btn.disabled=false;btn.style.opacity='0.65';btn.style.cursor='pointer';btn.onclick=function(){alert('Word 匯出需要網路連線載入模組，請連線後重新整理頁面（F5）。\n\n可改用「🖨 PDF」匯出。');};}};
-    document.head.appendChild(s2);
-  }
-  var s=document.createElement('script');s.src='https://unpkg.com/docx@8.5.0/build/index.js';s.onload=onReady;s.onerror=onErr;document.head.appendChild(s);
-})();
-</script>
 </body>
 </html>
