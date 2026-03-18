@@ -220,6 +220,9 @@ textarea:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95
   <button onclick="moveSelectedRow(-1)">▲ 上移</button>
   <button onclick="moveSelectedRow(1)">▼ 下移</button>
   <div class="toolbar-sep"></div>
+  <button onclick="newProject()" title="開新專案（清空全部）">🆕 新專案</button>
+  <button onclick="clearAllRows()" class="danger" title="清除所有腳本列，保留文件資訊">🗑 清空內容</button>
+  <div class="toolbar-sep"></div>
   <button onclick="saveManual()">💾 儲存</button>
   <button onclick="showImportModal()">📥 匯入</button>
   <button onclick="exportJSON()">↓ JSON</button>
@@ -516,7 +519,7 @@ function renderHead(){
     '<th class="col-shot-th" style="width:58px">鏡號</th>'+
     '<th class="col-dur-th" style="width:58px">時間</th>'+
     '<th style="width:55%">畫面</th>'+
-    '<th style="width:45%">聲音</th>'+
+    '<th style="width:45%">聲音／字幕</th>'+
     '<th class="col-act" style="width:30px"></th>'+
     '</tr>';
 }
@@ -555,7 +558,7 @@ function buildRow(row,i,tbody){
       '<textarea class="cell-ta" data-id="'+row.id+'" data-side="left" rows="3" placeholder="畫面說明、場景、鏡頭…">'+escHtml(row.left||'')+'</textarea>'+
     '</td>'+
     '<td style="vertical-align:top;padding:0">'+
-      '<textarea class="cell-ta" data-id="'+row.id+'" data-side="right" rows="3" placeholder="旁白、台詞、音效、音樂…">'+escHtml(row.right||'')+'</textarea>'+
+      '<textarea class="cell-ta" data-id="'+row.id+'" data-side="right" rows="3" placeholder="旁白、台詞、音效、音樂、字幕文字…">'+escHtml(row.right||'')+'</textarea>'+
     '</td>'+
     '<td class="row-actions" style="width:30px">'+
       '<button class="row-act-btn" onclick="moveRow(\''+row.id+'\',-1)" title="上移">▲</button>'+
@@ -674,6 +677,29 @@ function copyRow(id){
 }
 function deleteSelectedRow(){if(selectedRow)deleteRow(selectedRow);else showStatus('請先點選要刪除的列');}
 function moveSelectedRow(dir){if(selectedRow)moveRow(selectedRow,dir);else showStatus('請先點選要移動的列');}
+
+// 清空所有腳本列（保留文件資訊）
+function clearAllRows(){
+  if(!confirm('確定清空所有腳本列？\n文件資訊（標題、作者等）會保留，只清除腳本內容。'))return;
+  scriptDoc.rows=[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}];
+  selectedRow=null;
+  saveDoc();renderBody();
+  showStatus('已清空所有腳本列',1200);
+}
+
+// 開新專案（清空全部，包含文件資訊）
+function newProject(){
+  if(!confirm('開新專案將清空所有內容（包含標題、作者、所有腳本列）。\n\n如需保留目前內容，請先用「↓ JSON」備份。\n\n確定要開新專案嗎？'))return;
+  scriptDoc={
+    title:'',project:'',author:'',version:'v1.0',
+    date:new Date().toLocaleDateString('zh-TW'),
+    notes:'',
+    rows:[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]
+  };
+  selectedRow=null;
+  saveDoc();renderMeta();renderBody();
+  showStatus('已建立新專案 ✓',1200);
+}
 
 // ════════════════════════════════════════════════════════════
 // 側欄
@@ -1126,7 +1152,7 @@ function doDocxExport(opts){
     if(opts.shot)  hCells.push(hdrMiniCell('鏡號', shotW,  'DDE6F4'));
     if(opts.dur)   hCells.push(hdrMiniCell('時間', durW,   'DDE6F4'));
     hCells.push(hdrCell('畫面', leftW,  'DDE6F4'));
-    hCells.push(hdrCell('聲音', rightW, 'DDE6F4'));
+    hCells.push(hdrCell('聲音／字幕', rightW, 'DDE6F4'));
     var hdrRowXml = '<w:tr><w:trPr><w:tblHeader/></w:trPr>'+hCells.join('')+'</w:tr>';
 
     // 資料列
@@ -1168,11 +1194,69 @@ function doDocxExport(opts){
     // ════════════════════════════════════════════════════════
     // document.xml
     // ════════════════════════════════════════════════════════
+    // 頁首 XML（腳本標題 左側 + 頁碼 右側）
+    // ════════════════════════════════════════════════════════
+    var HDR_NS =
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '+
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+
+    var titleText = xe(scriptDoc.title||'腳本');
+    var authorText = scriptDoc.author ? xe(scriptDoc.author) : '';
+    var versionText = scriptDoc.version ? xe(scriptDoc.version) : '';
+    var hdrRpr = '<w:rPr>'+
+      '<w:rFonts w:ascii="微軟正黑體" w:hAnsi="微軟正黑體" w:eastAsia="微軟正黑體" w:cs="微軟正黑體"/>'+
+      '<w:sz w:val="16"/><w:szCs w:val="16"/>'+
+      '<w:color w:val="888888"/>'+
+      '</w:rPr>';
+
+    // 頁首：左側標題，右側「第 X 頁」（使用 tab stop 分隔）
+    var hdrXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<w:hdr '+HDR_NS+'>'+
+        '<w:p>'+
+          '<w:pPr>'+
+            '<w:pStyle w:val="Header"/>'+
+            '<w:jc w:val="left"/>'+
+            '<w:spacing w:after="0"/>'+
+            '<w:tabs>'+
+              '<w:tab w:val="right" w:pos="'+(TABLE_W)+'"/>'+
+            '</w:tabs>'+
+          '</w:pPr>'+
+          // 左側：標題（粗體）
+          '<w:r>'+hdrRpr.replace('<w:color w:val="888888"/>','<w:color w:val="555555"/><w:b/><w:bCs/>')+'<w:t xml:space="preserve">'+titleText+'</w:t></w:r>'+
+          // 中間資訊（若有作者或版本）
+          (authorText||versionText
+            ? '<w:r>'+hdrRpr+'<w:t xml:space="preserve">　'+
+                (authorText?authorText:'')+(authorText&&versionText?' ・ ':'')+
+                (versionText?versionText:'')+
+              '</w:t></w:r>'
+            : '')+
+          // Tab 切到右側
+          '<w:r>'+hdrRpr+'<w:tab/></w:r>'+
+          // 右側：第 N 頁
+          '<w:r>'+hdrRpr+'<w:t xml:space="preserve">第 </w:t></w:r>'+
+          '<w:fldSimple w:instr=" PAGE \\* MERGEFORMAT ">'+
+            '<w:r>'+hdrRpr+'<w:t>1</w:t></w:r>'+
+          '</w:fldSimple>'+
+          '<w:r>'+hdrRpr+'<w:t xml:space="preserve"> 頁</w:t></w:r>'+
+        '</w:p>'+
+        // 頁首下方細線
+        '<w:p>'+
+          '<w:pPr>'+
+            '<w:pStyle w:val="Header"/>'+
+            '<w:spacing w:after="0" w:before="0"/>'+
+            '<w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="CCCCCC"/></w:pBdr>'+
+          '</w:pPr>'+
+        '</w:p>'+
+      '</w:hdr>';
+
+    // ════════════════════════════════════════════════════════
     var sectPr =
       '<w:sectPr>'+
+        '<w:headerReference w:type="default" r:id="rId3"/>'+
         '<w:pgSz w:w="'+PAGE_W+'" w:h="'+PAGE_H+'"/>'+
-        '<w:pgMar w:top="'+MARGIN+'" w:right="'+MARGIN+'" w:bottom="'+MARGIN+'" w:left="'+MARGIN+
-          '" w:header="709" w:footer="709" w:gutter="0"/>'+
+        '<w:pgMar w:top="'+(MARGIN+300)+'" w:right="'+MARGIN+'" w:bottom="'+MARGIN+'" w:left="'+MARGIN+
+          '" w:header="480" w:footer="480" w:gutter="0"/>'+
       '</w:sectPr>';
 
     var NS =
@@ -1216,6 +1300,15 @@ function doDocxExport(opts){
           '<w:name w:val="Table Contents"/>'+
           '<w:basedOn w:val="Normal"/>'+
         '</w:style>'+
+        '<w:style w:type="paragraph" w:styleId="Header">'+
+          '<w:name w:val="header"/>'+
+          '<w:basedOn w:val="Normal"/>'+
+          '<w:pPr><w:spacing w:after="0"/></w:pPr>'+
+          '<w:rPr>'+
+            '<w:rFonts w:ascii="微軟正黑體" w:hAnsi="微軟正黑體" w:eastAsia="微軟正黑體" w:cs="微軟正黑體"/>'+
+            '<w:sz w:val="16"/><w:szCs w:val="16"/>'+
+          '</w:rPr>'+
+        '</w:style>'+
       '</w:styles>';
 
     // ════════════════════════════════════════════════════════
@@ -1244,6 +1337,8 @@ function doDocxExport(opts){
           'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'+
         '<Override PartName="/word/settings.xml" '+
           'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>'+
+        '<Override PartName="/word/header1.xml" '+
+          'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>'+
       '</Types>';
 
     var dotRels =
@@ -1263,6 +1358,9 @@ function doDocxExport(opts){
         '<Relationship Id="rId2" '+
           'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" '+
           'Target="settings.xml"/>'+
+        '<Relationship Id="rId3" '+
+          'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" '+
+          'Target="header1.xml"/>'+
       '</Relationships>';
 
     // ════════════════════════════════════════════════════════
@@ -1274,6 +1372,7 @@ function doDocxExport(opts){
     zip.file('word/document.xml',            documentXml);
     zip.file('word/styles.xml',              stylesXml);
     zip.file('word/settings.xml',            settingsXml);
+    zip.file('word/header1.xml',             hdrXml);
     zip.file('word/_rels/document.xml.rels', wordRels);
 
     zip.generateAsync({
@@ -1395,7 +1494,7 @@ function parseTextAuto(raw){
 function modeLabel(mode){return{markdown:'Markdown 表格',keyword:'關鍵字標記',loose:'段落輪替'}[mode]||mode;}
 function buildPreviewTable(rows){
   var p=rows.slice(0,5),more=rows.length>5?'<p style="font-size:11px;color:#999;margin-top:4px">…還有 '+(rows.length-5)+' 列</p>':'';
-  return'<table class="preview-table"><tr><th style="width:50%">畫面</th><th>聲音</th></tr>'+p.map(function(r){return'<tr><td>'+escHtml(r.left)+'</td><td>'+escHtml(r.right)+'</td></tr>';}).join('')+'</table>'+more;
+  return'<table class="preview-table"><tr><th style="width:50%">畫面</th><th>聲音／字幕</th></tr>'+p.map(function(r){return'<tr><td>'+escHtml(r.left)+'</td><td>'+escHtml(r.right)+'</td></tr>';}).join('')+'</table>'+more;
 }
 function previewPaste(){
   var raw=document.getElementById('pasteImport').value.trim();
@@ -1473,6 +1572,8 @@ function showGuide(){
           '<li><strong>Tab</strong>：依序切換至下一個欄位</li>'+
           '<li>每列右側有 ▲ 上移 / ▼ 下移 / ⧉ 複製 / ✕ 刪除按鈕</li>'+
           '<li>工具列的「▲ 上移」「▼ 下移」「✕ 刪除」作用於<strong>目前選取的列</strong>（點擊任意欄位即選取）</li>'+
+          '<li><strong>🗑 清空內容</strong>：清除所有腳本列，但保留標題、作者等文件資訊</li>'+
+          '<li><strong>🆕 新專案</strong>：清空全部內容（含文件資訊），從頭開始。操作前建議先用「↓ JSON」備份</li>'+
         '</ul>'+
       '</div>'+
 
@@ -1512,6 +1613,7 @@ function showGuide(){
           '<li>PDF 匯出使用瀏覽器列印，選「另存為 PDF」，建議設定 <strong>A4 直式、不縮放、不加頁首頁尾</strong>。</li>'+
           '<li>Word 匯出為真正的 .docx 表格格式，可用 Microsoft Word 開啟編輯，檔名會自動加上「_工作版」或「_提案版」後綴。</li>'+
           '<li>Word 匯出使用 JSZip 直接組裝 .docx 格式，<strong>完全離線可用，不需網路連線</strong>，任何時候都可以匯出。</li>'+
+          '<li>匯出的 Word 文件每頁頁首會自動顯示<strong>腳本標題（左側）與頁碼（右側）</strong>，方便翻閱多頁腳本。</li>'+
         '</ul>'+
       '</div>'+
 
@@ -1526,7 +1628,7 @@ function showGuide(){
           '<li><strong>JSON 專案</strong>：還原先前備份的完整腳本，包含場次、鏡號、段落類型等所有欄位。</li>'+
           '<li><strong>純文字 / Markdown 貼上</strong>：系統自動偵測三種格式：'+
             '<ul>'+
-              '<li>Markdown 表格：<code>| 畫面 | 聲音 |</code>，自動辨識欄標題</li>'+
+              '<li>Markdown 表格：<code>| 畫面 | 聲音／字幕 |</code>，自動辨識欄標題</li>'+
               '<li>關鍵字標記：以 <code>畫面：</code>、<code>VO：</code>、<code>SFX：</code>、<code>BGM：</code> 等開頭</li>'+
               '<li>段落輪替（寬鬆模式）：無標記時每段落輪流分配為畫面欄 / 聲音欄</li>'+
             '</ul>'+
