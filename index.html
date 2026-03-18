@@ -123,10 +123,35 @@ tr.t-normal .type-indicator{background:#e8e8e8}
 .mini-input:focus{background:#f8f0ff;border-radius:3px}
 .mini-input::placeholder{color:#ccc;font-size:11px}
 
+/* ── 文字關鍵字高亮（覆蓋層）── */
+.cell-wrap{position:relative;width:100%}
+.cell-ta{position:relative;z-index:1;background:transparent!important;color:transparent;caret-color:#1a1a1a}
+.cell-ta::selection{background:rgba(24,95,165,0.2);color:transparent}
+.cell-highlight{position:absolute;top:0;left:0;width:100%;height:100%;padding:7px 10px;font-size:14px;line-height:1.8;pointer-events:none;white-space:pre-wrap;word-break:break-word;overflow:hidden;z-index:0;color:#1a1a1a}
+.kw-vo{color:#1565C0;font-weight:600}
+.kw-sfx{color:#E65100;font-weight:600}
+.kw-bgm{color:#6A1B9A;font-weight:600}
+.kw-char{color:#1B5E20;font-weight:600}
+.kw-card{color:#BF360C;font-weight:600}
+.kw-note{color:#4E342E;font-style:italic}
+
 /* ── 主文字欄 ── */
-.cell-ta{width:100%;border:none;padding:7px 10px;font-size:14px;line-height:1.8;min-height:72px;background:transparent;color:#1a1a1a}
-.cell-ta:focus{outline:none;background:rgba(24,95,165,0.025)}
+.cell-ta{width:100%;border:none;padding:7px 10px;font-size:14px;line-height:1.8;min-height:72px;background:transparent;color:transparent;caret-color:#1a1a1a;resize:none;font-family:inherit}
+.cell-ta:focus{outline:none}
 .row-selected td{outline:2px solid rgba(24,95,165,0.15);outline-offset:-1px}
+tr.t-chapter{background:#1a1a1a!important}
+tr.t-chapter td{border-color:#1a1a1a!important;padding:0}
+.chapter-row-inner{display:flex;align-items:center;gap:10px;padding:10px 14px}
+.chapter-icon{font-size:13px;color:#aaa;flex-shrink:0}
+.chapter-input{flex:1;border:none;background:transparent;color:#fff;font-size:15px;font-weight:600;outline:none;letter-spacing:0.5px;font-family:inherit}
+.chapter-input::placeholder{color:#555}
+.chapter-badge{font-size:10px;color:#666;background:#333;padding:2px 7px;border-radius:10px;flex-shrink:0;white-space:nowrap}
+.chapter-act-btn{border:none;background:transparent;color:#555;font-size:11px;padding:3px 5px;cursor:pointer;border-radius:3px}
+.chapter-act-btn:hover{background:#333;color:#fff}
+@media print{
+  tr.t-chapter{background:#1a1a1a!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .chapter-input{color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 .row-actions{background:#fafafa;border-left:1px solid #eee;text-align:center;vertical-align:top}
 .row-act-btn{display:block;width:100%;border:none;background:transparent;color:#ccc;font-size:11px;padding:3px 0;cursor:pointer;line-height:1.5}
 .row-act-btn:hover{color:#333;background:#f0f0f0}
@@ -251,6 +276,16 @@ textarea:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95
   </div>
   <div class="settings-sep"></div>
   <div class="settings-group">
+    <strong style="font-size:11px;color:#888;margin-right:2px">顯示效果：</strong>
+    <label><input type="checkbox" id="ckHighlight" onchange="toggleHighlight(this.checked)" checked> 關鍵字標色</label>
+  </div>
+  <div class="settings-sep"></div>
+  <div class="settings-group">
+    <strong style="font-size:11px;color:#888;margin-right:2px">章節：</strong>
+    <button onclick="insertChapterRow()" style="font-size:11px;padding:3px 9px">＋ 插入章節標題</button>
+  </div>
+  <div class="settings-sep"></div>
+  <div class="settings-group">
     <strong style="font-size:11px;color:#888;margin-right:2px">鏡頭語言：</strong>
     <label><input type="checkbox" id="ckShots" onchange="toggleShotBar(this.checked)"> 快捷按鈕</label>
   </div>
@@ -348,7 +383,7 @@ var scriptDoc={
   rows:[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]
 };
 // 顯示設定（預設全關）
-var colSettings={scene:false,shot:false,dur:false,type:false,shotBar:false};
+var colSettings={scene:false,shot:false,dur:false,type:false,shotBar:false,highlight:true};
 var selectedRow=null;
 var lastFocusedLeftTA=null; // 最後聚焦的左欄 textarea（for 鏡頭語言插入）
 var pendingPasteRows=[],pendingDocxRows=[];
@@ -388,7 +423,7 @@ function loadDoc(){
   }catch(e){}
   try{
     var cs=localStorage.getItem('tw_col_settings');
-    if(cs)colSettings=Object.assign(colSettings,JSON.parse(cs));
+    if(cs)colSettings=Object.assign({scene:false,shot:false,dur:false,type:false,shotBar:false,highlight:true},JSON.parse(cs));
   }catch(e){}
 }
 function saveDoc(){localStorage.setItem('tw_script_doc',JSON.stringify(scriptDoc));showStatus('已自動儲存');}
@@ -437,6 +472,35 @@ function applyColSettings(){
   var ckDur=document.getElementById('ckDur');if(ckDur)ckDur.checked=colSettings.dur;
   var ckType=document.getElementById('ckType');if(ckType)ckType.checked=colSettings.type;
   var ckShots=document.getElementById('ckShots');if(ckShots)ckShots.checked=colSettings.shotBar;
+  var ckHl=document.getElementById('ckHighlight');if(ckHl)ckHl.checked=colSettings.highlight;
+}
+
+function toggleHighlight(val){
+  colSettings.highlight=val;
+  saveColSettings();
+  // 重新渲染所有高亮層
+  document.querySelectorAll('.cell-highlight').forEach(function(el){
+    el.style.display=val?'block':'none';
+  });
+  // 若關閉，讓文字顯示出來
+  document.querySelectorAll('.cell-ta').forEach(function(ta){
+    ta.style.color=val?'transparent':'#1a1a1a';
+  });
+}
+
+function insertChapterRow(){
+  // 插入在目前選取列之後，或末尾
+  var idx=selectedRow ? scriptDoc.rows.findIndex(function(r){return r.id===selectedRow;}) : -1;
+  var newRow={id:uid(),type:'chapter',scene:'',shot:'',duration:'',left:'',right:'',chapter:'新章節'};
+  if(idx>=0) scriptDoc.rows.splice(idx+1,0,newRow);
+  else scriptDoc.rows.push(newRow);
+  saveDoc();renderBody();
+  // 聚焦到新章節的輸入框
+  setTimeout(function(){
+    var inp=document.querySelector('input.chapter-input[data-id="'+newRow.id+'"]');
+    if(inp){inp.focus();inp.select();}
+  },50);
+  showStatus('已插入章節標題',900);
 }
 
 function toggleCol(col,val){
@@ -509,6 +573,16 @@ var ROW_TYPES=[
   {v:'sfx',l:'音效提示'},
   {v:'note',l:'備註'}
 ];
+// 關鍵字高亮規則（右欄聲音／字幕欄）
+var KW_RULES=[
+  {re:/^(VO：|旁白：|VO:)/gm,        cls:'kw-vo'},
+  {re:/^(SFX：|音效：|SFX:)/gm,      cls:'kw-sfx'},
+  {re:/^(BGM：|音樂：|BGM:)/gm,      cls:'kw-bgm'},
+  {re:/^(字卡：|字幕：|字卡:|字幕:)/gm, cls:'kw-card'},
+  {re:/^(【.+?】)/gm,                 cls:'kw-note'},
+  // 台詞（人名：格式，如 A：、主持人：）
+  {re:/^([^\s：:（(]{1,8}(?:：|:))/gm, cls:'kw-char'}
+];
 
 function renderHead(){
   document.getElementById('scriptHead').innerHTML=
@@ -538,13 +612,47 @@ function renderBody(){
 function buildRow(row,i,tbody){
   var tr=document.createElement('tr');
   tr.dataset.id=row.id;
+
+  // ── 章節標題列（特殊處理）──────────────────────────────────
+  if(row.type==='chapter'){
+    tr.className='t-chapter';
+    var totalCols=2+
+      (colSettings.type?1:0)+(colSettings.scene?1:0)+
+      (colSettings.shot?1:0)+(colSettings.dur?1:0)+1+1; // +num+actions
+    tr.innerHTML=
+      '<td colspan="'+totalCols+'" style="padding:0">'+
+        '<div class="chapter-row-inner">'+
+          '<span class="chapter-icon">▍</span>'+
+          '<input class="chapter-input" data-id="'+row.id+'" value="'+escHtml(row.chapter||'')+'" placeholder="輸入章節標題…" oninput="updateChapter(this)">'+
+          '<span class="chapter-badge">章節</span>'+
+          '<button class="chapter-act-btn" onclick="moveRow(\''+row.id+'\',-1)" title="上移">▲</button>'+
+          '<button class="chapter-act-btn" onclick="moveRow(\''+row.id+'\',1)" title="下移">▼</button>'+
+          '<button class="chapter-act-btn" onclick="deleteRow(\''+row.id+'\')" title="刪除" style="color:#E24B4A">✕</button>'+
+        '</div>'+
+      '</td>';
+    tbody.appendChild(tr);
+    return;
+  }
+
+  // ── 一般列 ────────────────────────────────────────────────
   tr.className='t-'+(row.type||'normal');
   if(selectedRow===row.id)tr.classList.add('row-selected');
 
-  // 段落類型 dropdown
   var typeOpts=ROW_TYPES.map(function(t){
     return '<option value="'+t.v+'"'+(row.type===t.v?' selected':'')+'>'+t.l+'</option>';
   }).join('');
+
+  // 高亮覆蓋層 HTML
+  function makeHighlightCell(text, side){
+    var hlHtml=colSettings.highlight ? applyHighlight(text,side) : escHtml(text);
+    var displayColor=colSettings.highlight?'transparent':'#1a1a1a';
+    return '<div class="cell-wrap">'+
+      '<div class="cell-highlight" style="'+(colSettings.highlight?'':'display:none')+'">'+hlHtml+'</div>'+
+      '<textarea class="cell-ta" data-id="'+row.id+'" data-side="'+side+'" rows="3"'+
+        ' placeholder="'+(side==='left'?'畫面說明、場景、鏡頭…':'旁白、台詞、音效、音樂、字幕文字…')+'"'+
+        ' style="color:'+displayColor+'">'+escHtml(text||'')+'</textarea>'+
+    '</div>';
+  }
 
   tr.innerHTML=
     '<td class="col-num" style="text-align:center;font-size:11px;color:#bbb;padding:6px 4px;vertical-align:top">'+(i+1)+'</td>'+
@@ -554,12 +662,8 @@ function buildRow(row,i,tbody){
     '<td class="col-scene-td" style="vertical-align:top;padding:0"><input class="mini-input" data-id="'+row.id+'" data-field="scene" value="'+escHtml(row.scene||'')+'" placeholder="S1" oninput="updateRowField(this)"></td>'+
     '<td class="col-shot-td" style="vertical-align:top;padding:0"><input class="mini-input" data-id="'+row.id+'" data-field="shot" value="'+escHtml(row.shot||'')+'" placeholder="01" oninput="updateRowField(this)"></td>'+
     '<td class="col-dur-td" style="vertical-align:top;padding:0"><input class="mini-input" data-id="'+row.id+'" data-field="duration" value="'+escHtml(row.duration||'')+'" placeholder="3s" oninput="updateRowField(this);updateTotalDuration()"></td>'+
-    '<td style="vertical-align:top;padding:0">'+
-      '<textarea class="cell-ta" data-id="'+row.id+'" data-side="left" rows="3" placeholder="畫面說明、場景、鏡頭…">'+escHtml(row.left||'')+'</textarea>'+
-    '</td>'+
-    '<td style="vertical-align:top;padding:0">'+
-      '<textarea class="cell-ta" data-id="'+row.id+'" data-side="right" rows="3" placeholder="旁白、台詞、音效、音樂、字幕文字…">'+escHtml(row.right||'')+'</textarea>'+
-    '</td>'+
+    '<td style="vertical-align:top;padding:0">'+makeHighlightCell(row.left,'left')+'</td>'+
+    '<td style="vertical-align:top;padding:0">'+makeHighlightCell(row.right,'right')+'</td>'+
     '<td class="row-actions" style="width:30px">'+
       '<button class="row-act-btn" onclick="moveRow(\''+row.id+'\',-1)" title="上移">▲</button>'+
       '<button class="row-act-btn" onclick="moveRow(\''+row.id+'\',1)" title="下移">▼</button>'+
@@ -573,7 +677,15 @@ function buildRow(row,i,tbody){
     autoResize(ta);
     ta.addEventListener('input',function(){
       var r=scriptDoc.rows.find(function(r){return r.id===ta.dataset.id;});
-      if(r){r[ta.dataset.side==='left'?'left':'right']=ta.value;autoResize(ta);saveDoc();}
+      if(r){
+        r[ta.dataset.side==='left'?'left':'right']=ta.value;
+        autoResize(ta);
+        // 同步更新高亮層
+        var wrap=ta.parentNode;
+        var hl=wrap&&wrap.querySelector('.cell-highlight');
+        if(hl){hl.innerHTML=applyHighlight(ta.value,ta.dataset.side);}
+        saveDoc();
+      }
     });
     ta.addEventListener('keydown',function(e){
       var idx=scriptDoc.rows.findIndex(function(r){return r.id===ta.dataset.id;});
@@ -591,6 +703,11 @@ function buildRow(row,i,tbody){
     ta.addEventListener('focus',function(){
       selectedRow=ta.dataset.id;renderHighlight();
       if(ta.dataset.side==='left')lastFocusedLeftTA=ta;
+    });
+    ta.addEventListener('scroll',function(){
+      // 同步高亮層捲動
+      var hl=ta.parentNode&&ta.parentNode.querySelector('.cell-highlight');
+      if(hl)hl.scrollTop=ta.scrollTop;
     });
   });
 }
@@ -610,6 +727,43 @@ function updateRowField(input){
   var r=scriptDoc.rows.find(function(r){return r.id===input.dataset.id;});
   if(r)r[input.dataset.field]=input.value;
   saveDoc();
+}
+function updateChapter(input){
+  var r=scriptDoc.rows.find(function(r){return r.id===input.dataset.id;});
+  if(r){r.chapter=input.value;saveDoc();}
+}
+
+// ── 關鍵字高亮引擎 ───────────────────────────────────────────
+function applyHighlight(text, side){
+  if(!text)return '';
+  // 先跳脫 HTML
+  var lines=String(text).split('\n');
+  var result=lines.map(function(line){
+    var escaped=escHtml(line);
+    if(!escaped)return '';
+    // 右欄才套用聲音關鍵字色
+    if(side==='right'){
+      // VO / 旁白
+      escaped=escaped.replace(/^(VO：|旁白：|VO:|VO ：)/,function(m){return '<span class="kw-vo">'+m+'</span>';});
+      // SFX / 音效
+      escaped=escaped.replace(/^(SFX：|音效：|SFX:|SFX ：)/,function(m){return '<span class="kw-sfx">'+m+'</span>';});
+      // BGM / 音樂
+      escaped=escaped.replace(/^(BGM：|音樂：|BGM:|BGM ：)/,function(m){return '<span class="kw-bgm">'+m+'</span>';});
+      // 字卡 / 字幕
+      escaped=escaped.replace(/^(字卡：|字幕：|字卡:|字幕:)/,function(m){return '<span class="kw-card">'+m+'</span>';});
+      // 【備注類】
+      escaped=escaped.replace(/(【[^】]*】)/g,function(m){return '<span class="kw-note">'+m+'</span>';});
+      // 台詞人名（如：A：、主持人：）—— 只在未匹配其他關鍵字時作用
+      if(!/kw-vo|kw-sfx|kw-bgm|kw-card/.test(escaped)){
+        escaped=escaped.replace(/^([^&\s<]{1,10}(?:：|:))/,function(m){return '<span class="kw-char">'+m+'</span>';});
+      }
+    } else {
+      // 左欄：【備注】標記
+      escaped=escaped.replace(/(【[^】]*】)/g,function(m){return '<span class="kw-note">'+m+'</span>';});
+    }
+    return escaped;
+  }).join('\n');
+  return result;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1195,10 +1349,27 @@ function doDocxExport(opts){
     hCells.push(hdrCell('聲音／字幕', rightW, 'DDE6F4'));
     var hdrRowXml = '<w:tr><w:trPr><w:tblHeader/></w:trPr>'+hCells.join('')+'</w:tr>';
 
-    // 資料列
-    var dataXml = scriptDoc.rows.map(function(row, i){
+    // 資料列（含章節標題列）
+    var normalRowIndex=0;
+    var dataXml = scriptDoc.rows.map(function(row){
+      // 章節標題列：橫跨全部欄位的黑底白字橫幅
+      if(row.type==='chapter'){
+        var colspan=allColW.length;
+        var totalW=TABLE_W;
+        var chapterContent=paras(row.chapter||'章節',true,HDR_SZ+4,'FFFFFF',undefined,0);
+        var chapterTcPr='<w:tcPr>'+
+          '<w:tcW w:w="'+totalW+'" w:type="dxa"/>'+
+          tcBorders('single',4,'333333')+
+          '<w:shd w:val="clear" w:color="auto" w:fill="1a1a1a"/>'+
+          tcMar(120,PAD_H,120,PAD_H)+
+          '<w:gridSpan w:val="'+colspan+'"/>'+
+          '</w:tcPr>';
+        return '<w:tr><w:tc>'+chapterTcPr+chapterContent+'</w:tc></w:tr>';
+      }
+      // 一般列
+      normalRowIndex++;
       var bg = TYPE_BG[row.type||'normal'] || 'FFFFFF';
-      var cells = [ datMiniCell(i+1, numW, 'F8F8F8') ];
+      var cells = [ datMiniCell(normalRowIndex, numW, 'F8F8F8') ];
       if(opts.type)  cells.push(datCell(TYPE_LBL[row.type||'normal']||'一般', typeW, bg));
       if(opts.scene) cells.push(datMiniCell(row.scene||'', sceneW, bg));
       if(opts.shot)  cells.push(datMiniCell(row.shot||'',  shotW,  bg));
@@ -1886,6 +2057,7 @@ initDB().then(function(){
   });
   var ckShots=document.getElementById('ckShots');if(ckShots)ckShots.checked=colSettings.shotBar;
   if(colSettings.shotBar)document.getElementById('shotBar').classList.remove('hidden');
+  var ckHl=document.getElementById('ckHighlight');if(ckHl)ckHl.checked=colSettings.highlight;
 });
 </script>
 
