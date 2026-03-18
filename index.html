@@ -1131,19 +1131,26 @@ function doPdfExport(opts){
     '版本：'+escHtml(scriptDoc.version||'')+'　日期：'+escHtml(scriptDoc.date||'');
 
   // 臨時覆蓋欄位可見性（配合列印設定）
-  var tbl=document.getElementById('mainTable');
   var prevScene=colSettings.scene,prevShot=colSettings.shot,prevDur=colSettings.dur,prevType=colSettings.type;
   colSettings.scene=opts.scene;colSettings.shot=opts.shot;colSettings.dur=opts.dur;colSettings.type=opts.type;
   applyColSettings();
   if(opts.mode==='proposal')document.body.classList.add('print-proposal-mode');
   else document.body.classList.remove('print-proposal-mode');
 
+  // 暫時修改 <title>，讓瀏覽器「另存為 PDF」時使用腳本名稱作為預設檔名
+  var origTitle=document.title;
+  var suffix=opts.mode==='proposal'?'_提案版':'_工作版';
+  document.title=(scriptDoc.title||'腳本')+suffix;
+
   setTimeout(function(){
     window.print();
-    // 還原
-    colSettings.scene=prevScene;colSettings.shot=prevShot;colSettings.dur=prevDur;colSettings.type=prevType;
-    applyColSettings();
-    document.body.classList.remove('print-proposal-mode');
+    // 列印視窗開啟後還原所有設定
+    setTimeout(function(){
+      document.title=origTitle;
+      colSettings.scene=prevScene;colSettings.shot=prevShot;colSettings.dur=prevDur;colSettings.type=prevType;
+      applyColSettings();
+      document.body.classList.remove('print-proposal-mode');
+    },500);
   },100);
 }
 
@@ -1462,11 +1469,39 @@ function doDocxExport(opts){
       '</w:hdr>';
 
     // ════════════════════════════════════════════════════════
+    // 頁尾 XML（頁碼置中）
+    // ════════════════════════════════════════════════════════
+    var ftrRpr = '<w:rPr>'+
+      '<w:rFonts w:ascii="微軟正黑體" w:hAnsi="微軟正黑體" w:eastAsia="微軟正黑體" w:cs="微軟正黑體"/>'+
+      '<w:sz w:val="16"/><w:szCs w:val="16"/>'+
+      '<w:color w:val="999999"/>'+
+      '</w:rPr>';
+
+    var ftrXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '+
+             'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
+        '<w:p>'+
+          '<w:pPr>'+
+            '<w:pStyle w:val="Footer"/>'+
+            '<w:jc w:val="center"/>'+
+            '<w:spacing w:after="0"/>'+
+          '</w:pPr>'+
+          '<w:r>'+ftrRpr+'<w:t xml:space="preserve">- </w:t></w:r>'+
+          '<w:fldSimple w:instr=" PAGE \\* MERGEFORMAT ">'+
+            '<w:r>'+ftrRpr+'<w:t>1</w:t></w:r>'+
+          '</w:fldSimple>'+
+          '<w:r>'+ftrRpr+'<w:t xml:space="preserve"> -</w:t></w:r>'+
+        '</w:p>'+
+      '</w:ftr>';
+
+    // ════════════════════════════════════════════════════════
     var sectPr =
       '<w:sectPr>'+
         '<w:headerReference w:type="default" r:id="rId3"/>'+
+        '<w:footerReference w:type="default" r:id="rId4"/>'+
         '<w:pgSz w:w="'+PAGE_W+'" w:h="'+PAGE_H+'"/>'+
-        '<w:pgMar w:top="'+(MARGIN+300)+'" w:right="'+MARGIN+'" w:bottom="'+MARGIN+'" w:left="'+MARGIN+
+        '<w:pgMar w:top="'+(MARGIN+300)+'" w:right="'+MARGIN+'" w:bottom="'+(MARGIN+200)+'" w:left="'+MARGIN+
           '" w:header="480" w:footer="480" w:gutter="0"/>'+
       '</w:sectPr>';
 
@@ -1520,6 +1555,15 @@ function doDocxExport(opts){
             '<w:sz w:val="16"/><w:szCs w:val="16"/>'+
           '</w:rPr>'+
         '</w:style>'+
+        '<w:style w:type="paragraph" w:styleId="Footer">'+
+          '<w:name w:val="footer"/>'+
+          '<w:basedOn w:val="Normal"/>'+
+          '<w:pPr><w:spacing w:after="0"/></w:pPr>'+
+          '<w:rPr>'+
+            '<w:rFonts w:ascii="微軟正黑體" w:hAnsi="微軟正黑體" w:eastAsia="微軟正黑體" w:cs="微軟正黑體"/>'+
+            '<w:sz w:val="16"/><w:szCs w:val="16"/>'+
+          '</w:rPr>'+
+        '</w:style>'+
       '</w:styles>';
 
     // ════════════════════════════════════════════════════════
@@ -1550,6 +1594,8 @@ function doDocxExport(opts){
           'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>'+
         '<Override PartName="/word/header1.xml" '+
           'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>'+
+        '<Override PartName="/word/footer1.xml" '+
+          'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'+
       '</Types>';
 
     var dotRels =
@@ -1572,6 +1618,9 @@ function doDocxExport(opts){
         '<Relationship Id="rId3" '+
           'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" '+
           'Target="header1.xml"/>'+
+        '<Relationship Id="rId4" '+
+          'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" '+
+          'Target="footer1.xml"/>'+
       '</Relationships>';
 
     // ════════════════════════════════════════════════════════
@@ -1584,6 +1633,7 @@ function doDocxExport(opts){
     zip.file('word/styles.xml',              stylesXml);
     zip.file('word/settings.xml',            settingsXml);
     zip.file('word/header1.xml',             hdrXml);
+    zip.file('word/footer1.xml',             ftrXml);
     zip.file('word/_rels/document.xml.rels', wordRels);
 
     zip.generateAsync({
