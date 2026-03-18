@@ -819,9 +819,49 @@ function loadRefItemContent(id,type){
   var body=document.getElementById('refbody-'+id);if(!body)return;
   dbGet(id).then(function(data){
     if(!data){body.innerHTML='<div style="font-size:11px;color:#bbb;text-align:center;padding:8px">無法載入</div>';return;}
-    if(type==='image')body.innerHTML='<img class="ref-img" src="'+data+'" onclick="openRefFullscreen(\''+id+'\')">';
-    else if(type==='pdf')body.innerHTML='<iframe class="ref-pdf-frame" src="'+data+'"></iframe>';
-    else body.innerHTML='<pre class="ref-text-pre">'+escHtml(String(data).slice(0,8000))+'</pre>';
+    if(type==='image'){
+      body.innerHTML='<img class="ref-img" src="'+data+'" onclick="openRefFullscreen(\''+id+'\')">';
+    } else if(type==='pdf'){
+      // 把 base64 data URL 轉成 Blob URL，繞過 file:// 安全限制
+      try{
+        var base64 = data.split(',')[1] || data;
+        var binary = atob(base64);
+        var bytes = new Uint8Array(binary.length);
+        for(var i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+        var blob = new Blob([bytes],{type:'application/pdf'});
+        var blobUrl = URL.createObjectURL(blob);
+        body.innerHTML=
+          '<div style="margin-bottom:6px;display:flex;gap:8px;align-items:center">'+
+            '<span style="font-size:11px;color:#888">PDF 預覽</span>'+
+            '<a href="'+blobUrl+'" target="_blank" style="font-size:11px;color:#185FA5;text-decoration:none;border:1px solid #c5d8f5;border-radius:4px;padding:2px 8px">↗ 在新分頁開啟</a>'+
+          '</div>'+
+          '<iframe class="ref-pdf-frame" src="'+blobUrl+'"></iframe>';
+      }catch(err){
+        // 轉換失敗時顯示開啟按鈕
+        body.innerHTML=
+          '<div style="padding:14px;text-align:center">'+
+            '<p style="font-size:12px;color:#888;margin-bottom:10px">瀏覽器安全限制，PDF 無法在此預覽。</p>'+
+            '<button class="primary" style="font-size:12px" onclick="openPdfBlob(\''+id+'\')">↗ 在新分頁開啟 PDF</button>'+
+          '</div>';
+      }
+    } else {
+      body.innerHTML='<pre class="ref-text-pre">'+escHtml(String(data).slice(0,8000))+'</pre>';
+    }
+  });
+}
+
+// 備用：手動觸發開啟 PDF
+function openPdfBlob(id){
+  dbGet(id).then(function(data){
+    if(!data)return;
+    try{
+      var base64=data.split(',')[1]||data;
+      var binary=atob(base64);
+      var bytes=new Uint8Array(binary.length);
+      for(var i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+      var blob=new Blob([bytes],{type:'application/pdf'});
+      window.open(URL.createObjectURL(blob),'_blank');
+    }catch(e){showStatus('無法開啟 PDF',2000);}
   });
 }
 function deleteRefItem(e,id){
