@@ -934,227 +934,347 @@ function doDocxExport(opts){
     return;
   }
   showStatus('正在產生 Word 文件…',3000);
-
   try{
     var isProposal = opts.mode==='proposal';
-    // DXA 單位 (1 inch = 1440 dxa)
+
+    // ── 頁面尺寸（DXA, 1440 dxa = 1 inch）────────────────────
     var PAGE_W=11906, PAGE_H=16838, MARGIN=1134;
-    var TABLE_W=PAGE_W-MARGIN*2; // 9638
+    var TABLE_W = PAGE_W - MARGIN*2; // 9638 dxa
 
-    // 計算欄寬
-    var numW=440, typeW=opts.type?900:0, sceneW=opts.scene?700:0, shotW=opts.shot?700:0, durW=opts.dur?700:0;
-    var used=numW+typeW+sceneW+shotW+durW;
-    var rem=TABLE_W-used;
-    var leftW=Math.round(rem*0.55), rightW=rem-leftW;
+    // ── 欄寬 ─────────────────────────────────────────────────
+    var numW=440, typeW=opts.type?900:0, sceneW=opts.scene?700:0,
+        shotW=opts.shot?700:0, durW=opts.dur?700:0;
+    var extraW = numW+typeW+sceneW+shotW+durW;
+    var rem = TABLE_W - extraW;
+    var leftW = Math.round(rem*0.55), rightW = rem - leftW;
+    var allColW = [numW];
+    if(opts.type)  allColW.push(typeW);
+    if(opts.scene) allColW.push(sceneW);
+    if(opts.shot)  allColW.push(shotW);
+    if(opts.dur)   allColW.push(durW);
+    allColW.push(leftW, rightW);
 
-    var colWidths=[numW];
-    if(opts.type)colWidths.push(typeW);
-    if(opts.scene)colWidths.push(sceneW);
-    if(opts.shot)colWidths.push(shotW);
-    if(opts.dur)colWidths.push(durW);
-    colWidths.push(leftW,rightW);
+    // ── 字級（half-points, 22 = 11pt, 26 = 13pt）────────────
+    var BODY_SZ  = isProposal ? 26 : 22;
+    var HDR_SZ   = isProposal ? 30 : 26;
+    var TITLE_SZ = isProposal ? 48 : 36;
+    var META_SZ  = isProposal ? 22 : 20;
+    var MINI_SZ  = isProposal ? 20 : 18;
+    var MINI_HDR_SZ = isProposal ? 22 : 20;
 
-    // 字型與字級 (half-points)
-    var bodySize = isProposal?26:22;
-    var hdrSize  = isProposal?30:26;
-    var titleSize= isProposal?48:36;
-    var metaSize = isProposal?22:20;
+    // ── 儲存格內距 ────────────────────────────────────────────
+    var PAD_V = isProposal ? 140 : 100;
+    var PAD_H = isProposal ? 160 : 130;
+    var PAD_MINI = 80;
 
-    // 儲存格內距 (dxa)
-    var PAD = isProposal ? 140 : 100;
-    var PAD_SIDE = isProposal ? 160 : 130;
+    // ── 型別色 ───────────────────────────────────────────────
+    var TYPE_BG  = {normal:'FFFFFF','scene-cut':'F0F0F0','key-shot':'FFFDE7',sfx:'E8F4FD',note:'F0FAF0'};
+    var TYPE_LBL = {normal:'一般','scene-cut':'場景切換','key-shot':'重點鏡頭',sfx:'音效提示',note:'備註'};
 
-    // 背景色對照
-    var TYPE_BG = {'normal':'FFFFFF','scene-cut':'F0F0F0','key-shot':'FFFDE7','sfx':'E8F4FD','note':'F0FAF0'};
-    var TYPE_LBL= {'normal':'一般','scene-cut':'場景切換','key-shot':'重點鏡頭','sfx':'音效提示','note':'備註'};
-
-    // ── XML 工具函式 ──────────────────────────────────────────
-    function xmlEsc(s){
+    // ════════════════════════════════════════════════════════
+    // XML 輔助函式
+    // ════════════════════════════════════════════════════════
+    function xe(s){ // XML escape
       return String(s||'')
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // 單一 run（不換行版）
-    function makeRun(text, bold, sizeHp, color, font){
-      font = font||'微軟正黑體';
-      var rpr = '<w:rPr>'+
-        '<w:rFonts w:ascii="'+font+'" w:hAnsi="'+font+'" w:cs="'+font+'"/>'+
-        '<w:sz w:val="'+sizeHp+'"/><w:szCs w:val="'+sizeHp+'"/>'+
-        (bold?'<w:b/><w:bCs/>':'')+
-        (color?'<w:color w:val="'+color+'"/>':'')+
+    // rPr（字元格式）
+    function rPr(bold, sz, color){
+      var font = '微軟正黑體';
+      return '<w:rPr>'+
+        '<w:rFonts w:ascii="'+font+'" w:hAnsi="'+font+'" w:eastAsia="'+font+'" w:cs="'+font+'"/>'+
+        (bold ? '<w:b/><w:bCs/>' : '')+
+        '<w:sz w:val="'+sz+'"/><w:szCs w:val="'+sz+'"/>'+
+        (color ? '<w:color w:val="'+color+'"/>' : '')+
+        '<w:lang w:val="zh-TW" w:eastAsia="zh-TW"/>'+
         '</w:rPr>';
-      return '<w:r>'+rpr+'<w:t xml:space="preserve">'+xmlEsc(text)+'</w:t></w:r>';
     }
 
-    // 段落（支援換行文字）→ 多個 <w:p>
-    function makeParas(text, bold, sizeHp, color, align, spacingAfter, lineVal){
-      var lines = String(text||'').split('\n');
-      var spacing = '<w:spacing w:after="'+(spacingAfter||0)+'"'+(lineVal?' w:line="'+lineVal+'" w:lineRule="exact"':'')+'/>';
-      return lines.map(function(line,i){
-        var ppr = '<w:pPr>'+
-          (align?'<w:jc w:val="'+align+'"/>':'')+
-          spacing+
-          '</w:pPr>';
-        return '<w:p>'+ppr+makeRun(line,bold,sizeHp,color)+'</w:p>';
+    // 單一 <w:r>
+    function run(text, bold, sz, color){
+      return '<w:r>'+rPr(bold,sz,color)+
+        '<w:t xml:space="preserve">'+xe(text)+'</w:t>'+
+        '</w:r>';
+    }
+
+    // pPr（段落格式）
+    function pPr(jc, spAfter, spLine){
+      var out = '<w:pPr>';
+      if(jc)      out += '<w:jc w:val="'+jc+'"/>';
+      out += '<w:spacing w:after="'+(spAfter||0)+'"';
+      if(spLine)  out += ' w:line="'+spLine+'" w:lineRule="auto"';
+      out += '/>';
+      out += '</w:pPr>';
+      return out;
+    }
+
+    // 單段落（文字中不含換行）
+    function para(text, bold, sz, color, jc, spAfter, spLine){
+      return '<w:p>'+pPr(jc,spAfter,spLine)+run(text,bold,sz,color)+'</w:p>';
+    }
+
+    // 多段落（支援 \n 換行）
+    function paras(text, bold, sz, color, jc, spAfter, spLine){
+      return String(text||'').split('\n').map(function(line){
+        return para(line, bold, sz, color, jc, spAfter, spLine);
       }).join('');
     }
 
-    // 邊框 XML
-    function borderXml(color, sz){
-      sz = sz||4;
-      var b = '<w:val w:val="single" w:sz="'+sz+'" w:space="0" w:color="'+color+'"/>';
-      return '<w:top'+b+'<w:left'+b+'<w:bottom'+b+'<w:right'+b;
+    // 單一邊框定義
+    function border(style, sz, color){
+      return ' w:val="'+style+'" w:sz="'+sz+'" w:space="0" w:color="'+color+'"';
     }
 
-    // 儲存格（支援多行文字）
-    function makeCell(text, isHdr, w, bg, align, miniFont){
-      bg = bg || (isHdr?'E8EFF7':'FFFFFF');
-      var bdrColor = isHdr ? (isProposal?'333333':'999999') : (isProposal?'FFFFFF':'CCCCCC');
-      var bdrSz    = isHdr ? (isProposal?8:6) : (isProposal?2:4);
-      var sz       = miniFont ? (isHdr?20:18) : (isHdr?hdrSize:bodySize);
-      var lineVal  = isProposal?360:0;
-      var spacingAfter = isProposal?100:0;
+    // tcBorders（四邊相同）
+    function tcBorders(style, sz, color){
+      var b = border(style, sz, color);
+      return '<w:tcBorders>'+
+        '<w:top'+b+'/><w:left'+b+'/><w:bottom'+b+'/><w:right'+b+'/>'+
+        '</w:tcBorders>';
+    }
 
-      var cellPadXml = '<w:tcMar>'+
-        '<w:top w:w="'+PAD+'" w:type="dxa"/>'+
-        '<w:bottom w:w="'+PAD+'" w:type="dxa"/>'+
-        '<w:left w:w="'+(miniFont?80:PAD_SIDE)+'" w:type="dxa"/>'+
-        '<w:right w:w="'+(miniFont?80:PAD_SIDE)+'" w:type="dxa"/>'+
+    // tblBorders（表格外框）
+    function tblBorders(style, sz, color){
+      var b = border(style, sz, color);
+      return '<w:tblBorders>'+
+        '<w:top'+b+'/><w:left'+b+'/><w:bottom'+b+'/>'+
+        '<w:right'+b+'/><w:insideH'+b+'/><w:insideV'+b+'/>'+
+        '</w:tblBorders>';
+    }
+
+    // tcMar（儲存格內距）
+    function tcMar(top, right, bottom, left){
+      return '<w:tcMar>'+
+        '<w:top w:w="'+top+'" w:type="dxa"/>'+
+        '<w:right w:w="'+right+'" w:type="dxa"/>'+
+        '<w:bottom w:w="'+bottom+'" w:type="dxa"/>'+
+        '<w:left w:w="'+left+'" w:type="dxa"/>'+
         '</w:tcMar>';
-      var vAlign = '<w:vAlign w:val="top"/>';
-      var shading = '<w:shd w:val="clear" w:color="auto" w:fill="'+bg+'"/>';
-      var borders = '<w:tcBorders>'+borderXml(bdrColor,bdrSz)+'</w:tcBorders>';
-      var tcPr = '<w:tcPr><w:tcW w:w="'+w+'" w:type="dxa"/>'+borders+shading+cellPadXml+vAlign+'</w:tcPr>';
+    }
 
-      var content = makeParas(text, isHdr, sz, isHdr?(isProposal?'222222':'333333'):'111111', miniFont?'center':undefined, spacingAfter, lineVal||undefined);
-
+    // 儲存格
+    function tc(content, w, bg, bdrStyle, bdrSz, bdrColor, padV, padH, vAlign){
+      bg       = bg||'FFFFFF';
+      bdrStyle = bdrStyle||'single';
+      bdrSz    = bdrSz||4;
+      bdrColor = bdrColor||'CCCCCC';
+      padV     = padV===undefined ? PAD_V : padV;
+      padH     = padH===undefined ? PAD_H : padH;
+      vAlign   = vAlign||'top';
+      var tcPr = '<w:tcPr>'+
+        '<w:tcW w:w="'+w+'" w:type="dxa"/>'+
+        tcBorders(bdrStyle, bdrSz, bdrColor)+
+        '<w:shd w:val="clear" w:color="auto" w:fill="'+bg+'"/>'+
+        tcMar(padV, padH, padV, padH)+
+        '<w:vAlign w:val="'+vAlign+'"/>'+
+        '</w:tcPr>';
       return '<w:tc>'+tcPr+content+'</w:tc>';
     }
 
-    // 表格列
-    function makeRow(cells, isHdr){
-      var trPr = isHdr ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
-      return '<w:tr>'+trPr+cells.join('')+'</w:tr>';
+    // 空段落（儲存格至少需要一個 w:p）
+    var EMPTY_P = '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>';
+
+    // ════════════════════════════════════════════════════════
+    // 建立儲存格（一般用、迷你用）
+    // ════════════════════════════════════════════════════════
+    var HDR_BDR_COLOR = isProposal ? '444444' : '999999';
+    var HDR_BDR_SZ    = isProposal ? 8 : 6;
+    var DAT_BDR_COLOR = isProposal ? 'DDDDDD' : 'CCCCCC';
+    var DAT_BDR_SZ    = isProposal ? 2 : 4;
+
+    function hdrCell(text, w, bg){
+      var content = paras(text, true, HDR_SZ, '222222', undefined, 0, isProposal?360:undefined);
+      return tc(content, w, bg||'DDE6F4', 'single', HDR_BDR_SZ, HDR_BDR_COLOR, PAD_V, PAD_H);
+    }
+    function hdrMiniCell(text, w, bg){
+      var content = para(text, true, MINI_HDR_SZ, '333333', 'center', 0);
+      return tc(content, w, bg||'DDE6F4', 'single', HDR_BDR_SZ, HDR_BDR_COLOR, PAD_MINI, PAD_MINI);
+    }
+    function datCell(text, w, bg){
+      var content = text ? paras(text, false, BODY_SZ, '111111', undefined, 0, isProposal?320:undefined) : EMPTY_P;
+      return tc(content, w, bg||'FFFFFF', 'single', DAT_BDR_SZ, DAT_BDR_COLOR, PAD_V, PAD_H);
+    }
+    function datMiniCell(text, w, bg){
+      var content = para(String(text||''), false, MINI_SZ, '777777', 'center', 0);
+      return tc(content, w, bg||'FAFAFA', 'single', DAT_BDR_SZ, DAT_BDR_COLOR, PAD_MINI, PAD_MINI);
     }
 
-    // ── 組裝 document.xml ────────────────────────────────────
-    var colWidthXml = colWidths.map(function(w){return '<w:gridCol w:w="'+w+'"/>';}).join('');
+    // ════════════════════════════════════════════════════════
+    // 表格 XML
+    // ════════════════════════════════════════════════════════
+    var gridXml = allColW.map(function(w){ return '<w:gridCol w:w="'+w+'"/>'; }).join('');
 
-    // 邊框設定（表格整體）
-    var tblBdrColor = isProposal?'FFFFFF':'AAAAAA';
-    var tblBdrSz    = isProposal?2:4;
-    var tblBorders  = '<w:tblBorders>'+borderXml(tblBdrColor,tblBdrSz)+'</w:tblBorders>';
-    var tblPr = '<w:tblPr>'+
+    var tblBdrXml = isProposal
+      ? tblBorders('single', 2, 'DDDDDD')
+      : tblBorders('single', 4, 'AAAAAA');
+
+    var tblPrXml = '<w:tblPr>'+
       '<w:tblW w:w="'+TABLE_W+'" w:type="dxa"/>'+
-      tblBorders+
-      '<w:tblLook w:val="0000"/>'+
+      tblBdrXml+
+      '<w:tblCellMar>'+
+        '<w:top w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/>'+
+        '<w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/>'+
+      '</w:tblCellMar>'+
       '</w:tblPr>';
-    var tblGrid = '<w:tblGrid>'+colWidthXml+'</w:tblGrid>';
 
     // 表頭列
-    var hdrCells = [makeCell('#',true,numW,'D0D8E8',undefined,true)];
-    if(opts.type)  hdrCells.push(makeCell('類型',  true,typeW, 'DDE6F4'));
-    if(opts.scene) hdrCells.push(makeCell('場次',  true,sceneW,'DDE6F4',undefined,true));
-    if(opts.shot)  hdrCells.push(makeCell('鏡號',  true,shotW, 'DDE6F4',undefined,true));
-    if(opts.dur)   hdrCells.push(makeCell('時間',  true,durW,  'DDE6F4',undefined,true));
-    hdrCells.push(makeCell('畫面',true,leftW, 'DDE6F4'));
-    hdrCells.push(makeCell('聲音',true,rightW,'DDE6F4'));
-    var headerRowXml = makeRow(hdrCells,true);
+    var hCells = [ hdrMiniCell('#', numW, 'D0D8E8') ];
+    if(opts.type)  hCells.push(hdrCell('類型',  typeW,  'DDE6F4'));
+    if(opts.scene) hCells.push(hdrMiniCell('場次', sceneW, 'DDE6F4'));
+    if(opts.shot)  hCells.push(hdrMiniCell('鏡號', shotW,  'DDE6F4'));
+    if(opts.dur)   hCells.push(hdrMiniCell('時間', durW,   'DDE6F4'));
+    hCells.push(hdrCell('畫面', leftW,  'DDE6F4'));
+    hCells.push(hdrCell('聲音', rightW, 'DDE6F4'));
+    var hdrRowXml = '<w:tr><w:trPr><w:tblHeader/></w:trPr>'+hCells.join('')+'</w:tr>';
 
     // 資料列
-    var dataRowsXml = scriptDoc.rows.map(function(row,i){
-      var bg = TYPE_BG[row.type||'normal']||'FFFFFF';
-      var cells = [makeCell(String(i+1),false,numW,'F8F8F8',undefined,true)];
-      if(opts.type)  cells.push(makeCell(TYPE_LBL[row.type||'normal']||'一般',false,typeW,bg));
-      if(opts.scene) cells.push(makeCell(row.scene||'',false,sceneW,bg,undefined,true));
-      if(opts.shot)  cells.push(makeCell(row.shot||'',false,shotW,bg,undefined,true));
-      if(opts.dur)   cells.push(makeCell(row.duration||'',false,durW,bg,undefined,true));
-      cells.push(makeCell(row.left||'',false,leftW,bg));
-      cells.push(makeCell(row.right||'',false,rightW,bg));
-      return makeRow(cells,false);
+    var dataXml = scriptDoc.rows.map(function(row, i){
+      var bg = TYPE_BG[row.type||'normal'] || 'FFFFFF';
+      var cells = [ datMiniCell(i+1, numW, 'F8F8F8') ];
+      if(opts.type)  cells.push(datCell(TYPE_LBL[row.type||'normal']||'一般', typeW, bg));
+      if(opts.scene) cells.push(datMiniCell(row.scene||'', sceneW, bg));
+      if(opts.shot)  cells.push(datMiniCell(row.shot||'',  shotW,  bg));
+      if(opts.dur)   cells.push(datMiniCell(row.duration||'', durW, bg));
+      cells.push(datCell(row.left||'',  leftW,  bg));
+      cells.push(datCell(row.right||'', rightW, bg));
+      return '<w:tr>'+cells.join('')+'</w:tr>';
     }).join('');
 
-    var tableXml = '<w:tbl>'+tblPr+tblGrid+headerRowXml+dataRowsXml+'</w:tbl>';
+    var tableXml = '<w:tbl>'+tblPrXml+'<w:tblGrid>'+gridXml+'</w:tblGrid>'+hdrRowXml+dataXml+'</w:tbl>';
 
+    // ════════════════════════════════════════════════════════
     // 文件標頭段落
+    // ════════════════════════════════════════════════════════
     var metaLines = [
-      scriptDoc.title&&('腳本標題：'+scriptDoc.title),
-      scriptDoc.project&&('專案名稱：'+scriptDoc.project),
-      (scriptDoc.author||scriptDoc.version)&&('作者：'+(scriptDoc.author||'')+'　版本：'+(scriptDoc.version||'')+'　日期：'+(scriptDoc.date||'')),
-      scriptDoc.notes&&('備註：'+scriptDoc.notes)
+      scriptDoc.title   && ('腳本標題：'+scriptDoc.title),
+      scriptDoc.project && ('專案名稱：'+scriptDoc.project),
+      (scriptDoc.author||scriptDoc.version) &&
+        ('作者：'+(scriptDoc.author||'')+'　版本：'+(scriptDoc.version||'')+'　日期：'+(scriptDoc.date||'')),
+      scriptDoc.notes   && ('備註：'+scriptDoc.notes)
     ].filter(Boolean);
-    if(isProposal&&opts.dur){
-      var tot=0;scriptDoc.rows.forEach(function(r){tot+=parseDuration(r.duration);});
-      if(tot)metaLines.push('總時長：'+formatDuration(tot));
+
+    if(isProposal && opts.dur){
+      var tot=0; scriptDoc.rows.forEach(function(r){tot+=parseDuration(r.duration);});
+      if(tot) metaLines.push('總時長：'+formatDuration(tot));
     }
 
-    var bodyXml =
-      makeParas(scriptDoc.title||'腳本', true, titleSize, '111111', undefined, isProposal?200:160)+
-      metaLines.map(function(t){return makeParas(t,false,metaSize,'888888',undefined,80);}).join('')+
-      '<w:p><w:pPr><w:spacing w:after="240"/></w:pPr></w:p>'+
-      tableXml;
+    var headerParas =
+      para(scriptDoc.title||'腳本', true, TITLE_SZ, '111111', undefined, isProposal?200:160)+
+      metaLines.map(function(t){ return para(t, false, META_SZ, '888888', undefined, 80); }).join('')+
+      '<w:p><w:pPr><w:spacing w:after="240"/></w:pPr></w:p>';
 
-    // 頁面設定
-    var sectPr = '<w:sectPr>'+
-      '<w:pgSz w:w="'+PAGE_W+'" w:h="'+PAGE_H+'"/>'+
-      '<w:pgMar w:top="'+MARGIN+'" w:right="'+MARGIN+'" w:bottom="'+MARGIN+'" w:left="'+MARGIN+'" w:header="0" w:footer="0" w:gutter="0"/>'+
+    // ════════════════════════════════════════════════════════
+    // document.xml
+    // ════════════════════════════════════════════════════════
+    var sectPr =
+      '<w:sectPr>'+
+        '<w:pgSz w:w="'+PAGE_W+'" w:h="'+PAGE_H+'"/>'+
+        '<w:pgMar w:top="'+MARGIN+'" w:right="'+MARGIN+'" w:bottom="'+MARGIN+'" w:left="'+MARGIN+
+          '" w:header="709" w:footer="709" w:gutter="0"/>'+
       '</w:sectPr>';
 
-    var documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-      '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"'+
-      ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'+
-      ' xmlns:o="urn:schemas-microsoft-com:office:office"'+
-      ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'+
-      ' xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'+
-      ' xmlns:v="urn:schemas-microsoft-com:vml"'+
-      ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"'+
-      ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'+
-      ' xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"'+
-      ' mc:Ignorable="w14 wp14">'+
-      '<w:body>'+bodyXml+sectPr+'</w:body>'+
+    var NS =
+      'xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" '+
+      'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '+
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '+
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '+
+      'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" '+
+      'mc:Ignorable="w14"';
+
+    var documentXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<w:document '+NS+'>'+
+        '<w:body>'+
+          headerParas+
+          tableXml+
+          sectPr+
+        '</w:body>'+
       '</w:document>';
 
-    // ── 其他必要 XML 檔案 ─────────────────────────────────────
-    var contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
-      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
-      '<Default Extension="xml" ContentType="application/xml"/>'+
-      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'+
-      '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'+
-      '</Types>';
-
-    var relsMain = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
-      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'+
-      '</Relationships>';
-
-    var relsWord = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
-      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'+
-      '</Relationships>';
-
-    // 基本樣式（含中文字型設定）
-    var stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-      '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'+
-      '<w:docDefaults><w:rPrDefault><w:rPr>'+
-      '<w:rFonts w:ascii="微軟正黑體" w:hAnsi="微軟正黑體" w:cs="微軟正黑體"/>'+
-      '<w:sz w:val="'+bodySize+'"/><w:szCs w:val="'+bodySize+'"/>'+
-      '<w:lang w:val="zh-TW" w:eastAsia="zh-TW"/>'+
-      '</w:rPr></w:rPrDefault></w:docDefaults>'+
-      '<w:style w:type="paragraph" w:styleId="Normal" w:default="1">'+
-      '<w:name w:val="Normal"/>'+
-      '<w:pPr><w:spacing w:after="0"/></w:pPr>'+
-      '</w:style>'+
+    // ════════════════════════════════════════════════════════
+    // styles.xml
+    // ════════════════════════════════════════════════════════
+    var stylesXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '+
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
+        '<w:docDefaults>'+
+          '<w:rPrDefault><w:rPr>'+
+            '<w:rFonts w:ascii="微軟正黑體" w:hAnsi="微軟正黑體" w:eastAsia="微軟正黑體" w:cs="微軟正黑體"/>'+
+            '<w:sz w:val="'+BODY_SZ+'"/><w:szCs w:val="'+BODY_SZ+'"/>'+
+            '<w:lang w:val="zh-TW" w:eastAsia="zh-TW" w:bidi="ar-SA"/>'+
+          '</w:rPr></w:rPrDefault>'+
+          '<w:pPrDefault><w:pPr><w:spacing w:after="0"/></w:pPr></w:pPrDefault>'+
+        '</w:docDefaults>'+
+        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">'+
+          '<w:name w:val="Normal"/>'+
+          '<w:pPr><w:spacing w:after="0"/></w:pPr>'+
+        '</w:style>'+
+        '<w:style w:type="paragraph" w:styleId="TableContents">'+
+          '<w:name w:val="Table Contents"/>'+
+          '<w:basedOn w:val="Normal"/>'+
+        '</w:style>'+
       '</w:styles>';
 
-    // ── 用 JSZip 組裝 ─────────────────────────────────────────
+    // ════════════════════════════════════════════════════════
+    // settings.xml（修正 Word 相容性）
+    // ════════════════════════════════════════════════════════
+    var settingsXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'+
+        '<w:defaultTabStop w:val="720"/>'+
+        '<w:compat>'+
+          '<w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/>'+
+        '</w:compat>'+
+      '</w:settings>';
+
+    // ════════════════════════════════════════════════════════
+    // 關係檔案 & 內容類型
+    // ════════════════════════════════════════════════════════
+    var contentTypes =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+        '<Default Extension="xml"  ContentType="application/xml"/>'+
+        '<Override PartName="/word/document.xml" '+
+          'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'+
+        '<Override PartName="/word/styles.xml" '+
+          'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'+
+        '<Override PartName="/word/settings.xml" '+
+          'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>'+
+      '</Types>';
+
+    var dotRels =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+        '<Relationship Id="rId1" '+
+          'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '+
+          'Target="word/document.xml"/>'+
+      '</Relationships>';
+
+    var wordRels =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+        '<Relationship Id="rId1" '+
+          'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '+
+          'Target="styles.xml"/>'+
+        '<Relationship Id="rId2" '+
+          'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" '+
+          'Target="settings.xml"/>'+
+      '</Relationships>';
+
+    // ════════════════════════════════════════════════════════
+    // 用 JSZip 組裝並下載
+    // ════════════════════════════════════════════════════════
     var zip = new JSZip();
-    zip.file('[Content_Types].xml', contentTypes);
-    zip.file('_rels/.rels', relsMain);
-    zip.file('word/document.xml', documentXml);
-    zip.file('word/styles.xml', stylesXml);
-    zip.file('word/_rels/document.xml.rels', relsWord);
+    zip.file('[Content_Types].xml',          contentTypes);
+    zip.file('_rels/.rels',                  dotRels);
+    zip.file('word/document.xml',            documentXml);
+    zip.file('word/styles.xml',              stylesXml);
+    zip.file('word/settings.xml',            settingsXml);
+    zip.file('word/_rels/document.xml.rels', wordRels);
 
     zip.generateAsync({
       type:'blob',
