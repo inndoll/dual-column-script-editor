@@ -1162,7 +1162,22 @@ function showImportModal(){
       '<button class="import-tab" id="tab-text" onclick="switchTab(\'text\')">純文字 / Markdown</button>' +
       '<button class="import-tab" id="tab-docx" onclick="switchTab(\'docx\')">Word (.docx)</button>' +
     '</div>' +
-    '<div id="panel-json"><p style="font-size:12px;color:#888;margin-bottom:10px">匯入先前匯出的 JSON 專案檔。</p><input type="file" accept=".json" onchange="importJSONFile(event)" style="font-size:13px;width:100%"></div>' +
+    '<div id="panel-json">' +
+      '<p style="font-size:12px;color:#888;margin-bottom:10px">支援上傳 .json 檔案，或直接貼上 JSON 代碼。</p>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">' +
+        '<input type="file" accept=".json" id="jsonFileInput" onchange="importJSONFile(event)" style="font-size:13px;flex:1">' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+        '<div style="flex:1;height:1px;background:#e0e0e0"></div>' +
+        '<span style="font-size:11px;color:#bbb;flex-shrink:0">或貼上 JSON 代碼</span>' +
+        '<div style="flex:1;height:1px;background:#e0e0e0"></div>' +
+      '</div>' +
+      '<textarea id="jsonPasteArea" rows="8" style="font-family:monospace;font-size:12px;margin-bottom:8px" placeholder=\'貼上從其他 AI 取得的 JSON 代碼，例如：\n{\n  "title": "腳本標題",\n  "rows": [\n    {"left": "畫面說明", "right": "VO：旁白"}\n  ]\n}\'></textarea>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<button class="primary" onclick="importJSONPaste()">✓ 匯入 JSON 代碼</button>' +
+        '<span id="jsonPasteStatus" style="font-size:12px;color:#888"></span>' +
+      '</div>' +
+    '</div>' +
     '<div id="panel-text" style="display:none">' +
       '<div class="info-box">自動偵測：① Markdown 表格 ② 關鍵字標記（畫面：/VO：/SFX：）③ 段落輪替</div>' +
       '<textarea id="pasteImport" rows="8" style="margin-bottom:10px;font-family:monospace;font-size:12px" placeholder="貼上文字…"></textarea>' +
@@ -1190,6 +1205,45 @@ function importJSONFile(e){
   var reader=new FileReader();
   reader.onload=function(ev){ try{ var d=JSON.parse(ev.target.result); if(d&&d.rows){ d.rows=d.rows.map(function(r){return Object.assign({type:'normal',scene:'',shot:'',duration:'',chapter:''},r);}); scriptDoc=d; saveDoc(); renderMeta(); renderBody(); showStatus('JSON 已匯入 ✓'); document.getElementById('modalContainer').innerHTML=''; }else showStatus('JSON 格式錯誤',2000); }catch(ex){showStatus('解析失敗',2000);} };
   reader.readAsText(file);
+}
+
+function importJSONPaste(){
+  var raw = document.getElementById('jsonPasteArea').value.trim();
+  var statusEl = document.getElementById('jsonPasteStatus');
+  if(!raw){ statusEl.textContent = '請先貼上 JSON 代碼'; return; }
+  try{
+    var d = JSON.parse(raw);
+    // 相容多種格式：
+    // 1. 標準格式 { title, rows, ... }
+    // 2. 只有 rows 陣列 { rows: [...] }
+    // 3. 直接是陣列 [{ left, right }, ...]
+    if(Array.isArray(d)){
+      // 直接是陣列，視為 rows
+      d = { title:'', project:'', author:'', version:'v1.0', date:new Date().toLocaleDateString('zh-TW'), notes:'', rows:d };
+    }
+    if(!d.rows || !Array.isArray(d.rows)){
+      statusEl.style.color = '#c0392b';
+      statusEl.textContent = '找不到 rows 欄位，請確認 JSON 格式';
+      return;
+    }
+    d.rows = d.rows.map(function(r){
+      return Object.assign({id:uid(), type:'normal', scene:'', shot:'', duration:'', chapter:'', left:'', right:''}, r);
+    });
+    // 補齊文件資訊欄位
+    d.title = d.title || '';
+    d.project = d.project || '';
+    d.author = d.author || '';
+    d.version = d.version || 'v1.0';
+    d.date = d.date || new Date().toLocaleDateString('zh-TW');
+    d.notes = d.notes || '';
+    scriptDoc = d;
+    saveDoc(); renderMeta(); renderBody();
+    showStatus('JSON 代碼已匯入，共 ' + d.rows.length + ' 列 ✓', 2000);
+    document.getElementById('modalContainer').innerHTML = '';
+  }catch(ex){
+    statusEl.style.color = '#c0392b';
+    statusEl.textContent = '解析失敗：JSON 格式有誤，請檢查代碼';
+  }
 }
 
 function previewPaste(){
