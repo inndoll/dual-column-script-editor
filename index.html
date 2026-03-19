@@ -333,6 +333,59 @@ var sidebarOpen = true;
 var settingsOpen = false;
 var DB = null;
 
+// --- Undo / Redo 堆疊（管理結構性操作：新增/刪除/移動/複製列等）---
+var undoStack = [];   // 每個元素是 rows 的 JSON 字串快照
+var redoStack = [];
+var MAX_UNDO = 100;
+
+// 在結構性操作「之前」呼叫，儲存當前 rows 快照
+function pushUndo(){
+  undoStack.push(JSON.stringify(scriptDoc.rows));
+  if(undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack = []; // 新操作清掉 redo
+}
+
+function doUndo(){
+  if(!undoStack.length){ showStatus('沒有可復原的操作',1000); return; }
+  redoStack.push(JSON.stringify(scriptDoc.rows));
+  scriptDoc.rows = JSON.parse(undoStack.pop());
+  saveDoc(); renderBody();
+  showStatus('已復原 ↩',900);
+}
+
+function doRedo(){
+  if(!redoStack.length){ showStatus('沒有可重做的操作',1000); return; }
+  undoStack.push(JSON.stringify(scriptDoc.rows));
+  scriptDoc.rows = JSON.parse(redoStack.pop());
+  saveDoc(); renderBody();
+  showStatus('已重做 ↪',900);
+}
+
+// 全域鍵盤監聽：Ctrl/⌘+Z / Ctrl/⌘+Y / Ctrl/⌘+Shift+Z
+document.addEventListener('keydown', function(e){
+  var isMeta = e.ctrlKey || e.metaKey;
+  if(!isMeta) return;
+
+  var isUndo = (e.key === 'z' && !e.shiftKey);
+  var isRedo = (e.key === 'y' || (e.key === 'z' && e.shiftKey));
+  if(!isUndo && !isRedo) return;
+
+  if(isUndo){
+    if(undoStack.length > 0){
+      // 有結構性歷史：攔截並執行結構性 undo
+      e.preventDefault();
+      doUndo();
+    }
+    // 沒有結構性歷史：不攔截，讓瀏覽器處理文字 undo
+  }
+  if(isRedo){
+    if(redoStack.length > 0){
+      e.preventDefault();
+      doRedo();
+    }
+  }
+});
+
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
 function escHtml(s){
@@ -436,8 +489,20 @@ function toggleShotBar(val){
 function toggleHighlight(val){
   colSettings.highlight = val;
   saveColSettings();
-  document.querySelectorAll('.cell-highlight').forEach(function(el){ el.style.display = val ? 'block' : 'none'; });
-  document.querySelectorAll('.cell-ta').forEach(function(ta){ ta.style.color = val ? 'transparent' : '#1a1a1a'; });
+  if(val){
+    // 開啟：非聚焦狀態的 textarea 顯示高亮
+    document.querySelectorAll('.cell-ta').forEach(function(ta){
+      if(document.activeElement !== ta) ta.style.color = 'transparent';
+    });
+    document.querySelectorAll('.cell-highlight').forEach(function(hl){
+      var ta = hl.parentNode && hl.parentNode.querySelector('.cell-ta');
+      if(ta && document.activeElement !== ta) hl.style.visibility = 'visible';
+    });
+  } else {
+    // 關閉：所有 textarea 顯示真實文字，隱藏高亮層
+    document.querySelectorAll('.cell-ta').forEach(function(ta){ ta.style.color = '#1a1a1a'; });
+    document.querySelectorAll('.cell-highlight').forEach(function(hl){ hl.style.visibility = 'hidden'; });
+  }
 }
 
 // --- Duration ---
@@ -586,13 +651,6 @@ function buildRow(row, i, tbody){
       if(r){
         r[ta.dataset.side === 'left' ? 'left' : 'right'] = ta.value;
         autoResize(ta);
-        // 用 requestAnimationFrame 延遲更新高亮層
-        // 讓瀏覽器先把這次 input 寫入 undo 堆疊，避免破壞 Ctrl+Z/Y
-        var taRef = ta;
-        requestAnimationFrame(function(){
-          var hl = taRef.parentNode && taRef.parentNode.querySelector('.cell-highlight');
-          if(hl) hl.innerHTML = applyHighlight(taRef.value, taRef.dataset.side);
-        });
         saveDoc();
       }
     });
@@ -600,16 +658,11 @@ function buildRow(row, i, tbody){
       var idx = scriptDoc.rows.findIndex(function(r){ return r.id === ta.dataset.id; });
 
       if(e.key === 'Enter' && !e.shiftKey){
-        // 判斷游標是否在最後一行的行尾
-        // 只有在「最後一行 且 游標在行尾」時才觸發跳格/新增列
         var val = ta.value;
         var pos = ta.selectionStart;
-        var isAtEnd = (pos === val.length);
-        // 也判斷游標是否在最後一行（即游標後面沒有換行符）
-        var isOnLastLine = (val.indexOf('\n', pos) === -1);
-
-        if(isAtEnd || isOnLastLine && pos >= val.lastIndexOf('\n') + 1){
-          // 游標在最後一行的行尾 → 跳格或新增列
+        // 只有游標在整段文字最末端才跳格或新增列，其他位置執行原生換行
+        var cursorAtVeryEnd = (pos === val.length && ta.selectionEnd === val.length);
+        if(cursorAtVeryEnd){
           e.preventDefault();
           if(ta.dataset.side === 'left'){
             var rt = tr.querySelectorAll('textarea')[1]; if(rt) rt.focus();
@@ -618,7 +671,7 @@ function buildRow(row, i, tbody){
             setTimeout(function(){ var rows = document.querySelectorAll('.cell-ta[data-side="left"]'); if(rows[idx+1]) rows[idx+1].focus(); }, 50);
           }
         }
-        // 否則讓瀏覽器執行原生換行（Shift+Enter 效果）
+        // 游標不在末端：不攔截，讓瀏覽器換行
       }
 
       if(e.key === 'Tab'){
@@ -627,7 +680,25 @@ function buildRow(row, i, tbody){
         else{ var next = document.querySelectorAll('.cell-ta[data-side="left"]')[idx+1]; if(next) next.focus(); }
       }
     });
-    ta.addEventListener('focus', function(){ selectedRow = ta.dataset.id; renderHighlight(); if(ta.dataset.side === 'left') lastFocusedLeftTA = ta; });
+    ta.addEventListener('focus', function(){
+      selectedRow = ta.dataset.id; renderHighlight();
+      if(ta.dataset.side === 'left') lastFocusedLeftTA = ta;
+      // 聚焦時顯示真實文字、隱藏高亮層，讓瀏覽器 undo/redo 完全正常運作
+      ta.style.color = '#1a1a1a';
+      var hl = ta.parentNode && ta.parentNode.querySelector('.cell-highlight');
+      if(hl) hl.style.visibility = 'hidden';
+    });
+    ta.addEventListener('blur', function(){
+      // 失焦時更新高亮層並顯示，文字恢復透明
+      if(colSettings.highlight){
+        var hl = ta.parentNode && ta.parentNode.querySelector('.cell-highlight');
+        if(hl){
+          hl.innerHTML = applyHighlight(ta.value, ta.dataset.side);
+          hl.style.visibility = 'visible';
+        }
+        ta.style.color = 'transparent';
+      }
+    });
     ta.addEventListener('scroll', function(){ var hl = ta.parentNode && ta.parentNode.querySelector('.cell-highlight'); if(hl) hl.scrollTop = ta.scrollTop; });
   });
 }
@@ -637,19 +708,20 @@ function autoResize(ta){ ta.style.height = 'auto'; ta.style.height = ta.scrollHe
 
 // --- Row operations ---
 function addRow(){
+  pushUndo();
   scriptDoc.rows.push({id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''});
   saveDoc(); renderBody();
   var tas = document.querySelectorAll('.cell-ta[data-side="left"]');
   if(tas.length) tas[tas.length-1].focus();
 }
-function addRowAfter(idx){ scriptDoc.rows.splice(idx+1, 0, {id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}); saveDoc(); renderBody(); }
-function deleteRow(id){ if(scriptDoc.rows.length<=1){showStatus('至少保留一列');return;} scriptDoc.rows = scriptDoc.rows.filter(function(r){ return r.id !== id; }); saveDoc(); renderBody(); }
-function moveRow(id,dir){ var i = scriptDoc.rows.findIndex(function(r){ return r.id===id; }); var j = i+dir; if(j<0||j>=scriptDoc.rows.length)return; var tmp=scriptDoc.rows[i]; scriptDoc.rows[i]=scriptDoc.rows[j]; scriptDoc.rows[j]=tmp; saveDoc(); renderBody(); }
-function copyRow(id){ var i = scriptDoc.rows.findIndex(function(r){ return r.id===id; }); scriptDoc.rows.splice(i+1, 0, Object.assign({}, scriptDoc.rows[i], {id:uid()})); saveDoc(); renderBody(); }
+function addRowAfter(idx){ pushUndo(); scriptDoc.rows.splice(idx+1, 0, {id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}); saveDoc(); renderBody(); }
+function deleteRow(id){ if(scriptDoc.rows.length<=1){showStatus('至少保留一列');return;} pushUndo(); scriptDoc.rows = scriptDoc.rows.filter(function(r){ return r.id !== id; }); saveDoc(); renderBody(); }
+function moveRow(id,dir){ var i = scriptDoc.rows.findIndex(function(r){ return r.id===id; }); var j = i+dir; if(j<0||j>=scriptDoc.rows.length)return; pushUndo(); var tmp=scriptDoc.rows[i]; scriptDoc.rows[i]=scriptDoc.rows[j]; scriptDoc.rows[j]=tmp; saveDoc(); renderBody(); }
+function copyRow(id){ var i = scriptDoc.rows.findIndex(function(r){ return r.id===id; }); pushUndo(); scriptDoc.rows.splice(i+1, 0, Object.assign({}, scriptDoc.rows[i], {id:uid()})); saveDoc(); renderBody(); }
 function deleteSelectedRow(){ if(selectedRow) deleteRow(selectedRow); else showStatus('請先點選要刪除的列'); }
 function moveSelectedRow(dir){ if(selectedRow) moveRow(selectedRow,dir); else showStatus('請先點選要移動的列'); }
-function clearAllRows(){ if(!confirm('確定清空所有腳本列？文件資訊會保留。'))return; scriptDoc.rows=[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]; selectedRow=null; saveDoc(); renderBody(); showStatus('已清空',1000); }
-function newProject(){ if(!confirm('開新專案將清空所有內容。建議先用「↓ JSON」備份。\n確定繼續？'))return; scriptDoc={title:'',project:'',author:'',version:'v1.0',date:new Date().toLocaleDateString('zh-TW'),notes:'',rows:[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]}; selectedRow=null; saveDoc(); renderMeta(); renderBody(); showStatus('已建立新專案',1000); }
+function clearAllRows(){ if(!confirm('確定清空所有腳本列？文件資訊會保留。'))return; pushUndo(); scriptDoc.rows=[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]; selectedRow=null; saveDoc(); renderBody(); showStatus('已清空',1000); }
+function newProject(){ if(!confirm('開新專案將清空所有內容。建議先用「↓ JSON」備份。\n確定繼續？'))return; undoStack=[]; redoStack=[]; scriptDoc={title:'',project:'',author:'',version:'v1.0',date:new Date().toLocaleDateString('zh-TW'),notes:'',rows:[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]}; selectedRow=null; saveDoc(); renderMeta(); renderBody(); showStatus('已建立新專案',1000); }
 
 function updateRowType(sel){ var r=scriptDoc.rows.find(function(r){ return r.id===sel.dataset.id; }); if(!r)return; r.type=sel.value; var tr=sel.closest('tr'); if(tr){ tr.className='t-'+r.type; if(selectedRow===r.id) tr.classList.add('row-selected'); } saveDoc(); }
 function updateRowField(input){ var r=scriptDoc.rows.find(function(r){ return r.id===input.dataset.id; }); if(r) r[input.dataset.field]=input.value; saveDoc(); }
@@ -659,6 +731,7 @@ function updateChapter(input){ var r=scriptDoc.rows.find(function(r){ return r.i
 function insertChapterRow(){
   var idx = selectedRow ? scriptDoc.rows.findIndex(function(r){ return r.id===selectedRow; }) : -1;
   var newRow = {id:uid(),type:'chapter',scene:'',shot:'',duration:'',left:'',right:'',chapter:'新章節'};
+  pushUndo();
   if(idx>=0) scriptDoc.rows.splice(idx+1, 0, newRow);
   else scriptDoc.rows.push(newRow);
   saveDoc(); renderBody();
@@ -728,9 +801,11 @@ function runAutoNumber(){
   function shotLabel(n){ if(shotFmt==='3digit') return String(n).padStart(3,'0'); if(shotFmt==='plain') return String(n); return String(n).padStart(2,'0'); }
 
   if(sceneMode === 'reset'){
+    pushUndo();
     var sc = sceneLabel(0), shotIdx = 1;
     scriptDoc.rows.forEach(function(row){ if(row.type==='chapter')return; row.scene=sc; row.shot=shotLabel(shotIdx++); });
   } else if(sceneMode === 'chapter'){
+    pushUndo();
     var scIdx = 0, shotIdx = 1, started = false;
     scriptDoc.rows.forEach(function(row){
       if(row.type==='chapter'){ if(started) scIdx++; shotIdx=1; started=true; return; }
@@ -738,6 +813,7 @@ function runAutoNumber(){
       row.scene = sceneLabel(scIdx); row.shot = shotLabel(shotIdx++);
     });
   } else {
+    pushUndo();
     var sceneOrder = [], seenScenes = {};
     scriptDoc.rows.forEach(function(row){ if(row.type==='chapter')return; var sc=String(row.scene||'__blank__'); if(!seenScenes[sc]){seenScenes[sc]=true;sceneOrder.push(sc);} });
     var counters = {};
@@ -1226,7 +1302,7 @@ function closeModal(e){ if(e.target.classList.contains('modal-bg')) document.get
 function importJSONFile(e){
   var file=e.target.files[0]; if(!file)return;
   var reader=new FileReader();
-  reader.onload=function(ev){ try{ var d=JSON.parse(ev.target.result); if(d&&d.rows){ d.rows=d.rows.map(function(r){return Object.assign({type:'normal',scene:'',shot:'',duration:'',chapter:''},r);}); scriptDoc=d; saveDoc(); renderMeta(); renderBody(); showStatus('JSON 已匯入 ✓'); document.getElementById('modalContainer').innerHTML=''; }else showStatus('JSON 格式錯誤',2000); }catch(ex){showStatus('解析失敗',2000);} };
+  reader.onload=function(ev){ try{ var d=JSON.parse(ev.target.result); if(d&&d.rows){ d.rows=d.rows.map(function(r){return Object.assign({type:'normal',scene:'',shot:'',duration:'',chapter:''},r);}); pushUndo(); scriptDoc=d; saveDoc(); renderMeta(); renderBody(); showStatus('JSON 已匯入 ✓'); document.getElementById('modalContainer').innerHTML=''; }else showStatus('JSON 格式錯誤',2000); }catch(ex){showStatus('解析失敗',2000);} };
   reader.readAsText(file);
 }
 
@@ -1259,6 +1335,7 @@ function importJSONPaste(){
     d.version = d.version || 'v1.0';
     d.date = d.date || new Date().toLocaleDateString('zh-TW');
     d.notes = d.notes || '';
+    pushUndo();
     scriptDoc = d;
     saveDoc(); renderMeta(); renderBody();
     showStatus('JSON 代碼已匯入，共 ' + d.rows.length + ' 列 ✓', 2000);
@@ -1281,6 +1358,7 @@ function previewPaste(){
 }
 function confirmPaste(){
   if(!pendingPasteRows.length)return;
+  pushUndo();
   if(confirm('共 '+pendingPasteRows.length+' 列。\n確定 → 附加到末尾\n取消 → 取代全部')){
     scriptDoc.rows = scriptDoc.rows.concat(pendingPasteRows.map(function(r){return Object.assign({},r,{id:uid()});}));
   } else {
@@ -1317,6 +1395,7 @@ function importDocxInput(e){
 }
 function confirmDocxRows(append){
   if(!pendingDocxRows.length)return;
+  pushUndo();
   var fresh=pendingDocxRows.map(function(r){return Object.assign({},r,{id:uid()});});
   if(append) scriptDoc.rows=scriptDoc.rows.concat(fresh); else scriptDoc.rows=fresh;
   saveDoc(); renderMeta(); renderBody(); showStatus('已匯入 '+pendingDocxRows.length+' 列 ✓'); document.getElementById('modalContainer').innerHTML='';
@@ -1396,6 +1475,7 @@ function showTemplates(){
 function applyTemplate(key){
   var tpl=TEMPLATES[key]; if(!tpl)return;
   var newRows=tpl.rows.map(function(r){return Object.assign({id:uid(),type:'normal',scene:'',shot:'',duration:'',chapter:''},r);});
+  pushUndo();
   if(confirm('套用「'+tpl.name+'」\n確定 → 取代全部\n取消 → 附加到末尾')) scriptDoc.rows=newRows;
   else scriptDoc.rows=scriptDoc.rows.concat(newRows);
   saveDoc(); renderBody(); showStatus('已套用「'+tpl.name+'」'); document.getElementById('modalContainer').innerHTML='';
