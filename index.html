@@ -586,18 +586,41 @@ function buildRow(row, i, tbody){
       if(r){
         r[ta.dataset.side === 'left' ? 'left' : 'right'] = ta.value;
         autoResize(ta);
-        var hl = ta.parentNode && ta.parentNode.querySelector('.cell-highlight');
-        if(hl) hl.innerHTML = applyHighlight(ta.value, ta.dataset.side);
+        // 用 requestAnimationFrame 延遲更新高亮層
+        // 讓瀏覽器先把這次 input 寫入 undo 堆疊，避免破壞 Ctrl+Z/Y
+        var taRef = ta;
+        requestAnimationFrame(function(){
+          var hl = taRef.parentNode && taRef.parentNode.querySelector('.cell-highlight');
+          if(hl) hl.innerHTML = applyHighlight(taRef.value, taRef.dataset.side);
+        });
         saveDoc();
       }
     });
     ta.addEventListener('keydown', function(e){
       var idx = scriptDoc.rows.findIndex(function(r){ return r.id === ta.dataset.id; });
+
       if(e.key === 'Enter' && !e.shiftKey){
-        e.preventDefault();
-        if(ta.dataset.side === 'left'){ var rt = tr.querySelectorAll('textarea')[1]; if(rt) rt.focus(); }
-        else{ addRowAfter(idx); setTimeout(function(){ var rows = document.querySelectorAll('.cell-ta[data-side="left"]'); if(rows[idx+1]) rows[idx+1].focus(); }, 50); }
+        // 判斷游標是否在最後一行的行尾
+        // 只有在「最後一行 且 游標在行尾」時才觸發跳格/新增列
+        var val = ta.value;
+        var pos = ta.selectionStart;
+        var isAtEnd = (pos === val.length);
+        // 也判斷游標是否在最後一行（即游標後面沒有換行符）
+        var isOnLastLine = (val.indexOf('\n', pos) === -1);
+
+        if(isAtEnd || isOnLastLine && pos >= val.lastIndexOf('\n') + 1){
+          // 游標在最後一行的行尾 → 跳格或新增列
+          e.preventDefault();
+          if(ta.dataset.side === 'left'){
+            var rt = tr.querySelectorAll('textarea')[1]; if(rt) rt.focus();
+          } else {
+            addRowAfter(idx);
+            setTimeout(function(){ var rows = document.querySelectorAll('.cell-ta[data-side="left"]'); if(rows[idx+1]) rows[idx+1].focus(); }, 50);
+          }
+        }
+        // 否則讓瀏覽器執行原生換行（Shift+Enter 效果）
       }
+
       if(e.key === 'Tab'){
         e.preventDefault();
         if(ta.dataset.side === 'left'){ var rt = tr.querySelectorAll('textarea')[1]; if(rt) rt.focus(); }
@@ -1307,7 +1330,7 @@ function showGuide(){
     '<button class="modal-close" onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">✕</button>' +
     '<h2>？ 使用指南</h2>' +
     '<div class="guide-section"><h3>什麼是雙欄式腳本？</h3><p>左欄「畫面」描述視覺資訊（場景、鏡頭、動作），右欄「聲音／字幕」描述聽覺資訊（VO 旁白、台詞、SFX 音效、BGM 音樂）及字幕文字。</p></div>' +
-    '<div class="guide-section"><h3>基本操作</h3><ul><li>點擊欄位開始輸入，<strong>Shift+Enter</strong> 在欄內換行</li><li><strong>Enter</strong>：畫面欄跳至聲音欄；聲音欄新增下一列</li><li><strong>Tab</strong>：切換欄位</li><li><strong>🗑 清空</strong>：清除所有腳本列，保留文件資訊</li><li><strong>🆕 新專案</strong>：清空全部，從頭開始</li></ul></div>' +
+    '<div class="guide-section"><h3>基本操作</h3><ul><li>點擊欄位開始輸入；<strong>Enter</strong> 在行中間正常換行，在<strong>最後一行行尾</strong>時才會跳格或新增列</li><li><strong>Shift+Enter</strong>：強制在欄內換行（不跳格）</li><li><strong>Tab</strong>：切換欄位</li><li><strong>Ctrl+Z</strong>：復原上一步；<strong>Ctrl+Y</strong>：重做</li><li><strong>🗑 清空</strong>：清除所有腳本列，保留文件資訊</li><li><strong>🆕 新專案</strong>：清空全部，從頭開始</li></ul></div>' +
     '<div class="guide-section"><h3>⚙ 進階功能</h3><ul><li><strong>場次/鏡號/時間</strong>：開啟後每列出現額外欄位，時間欄自動計算總時長</li><li><strong>⟳ 自動編號</strong>：依章節或場次自動排列鏡號</li><li><strong>段落類型</strong>：每列左側下拉選單，對應不同背景色（場景切換/重點鏡頭/音效提示/備註）</li><li><strong>關鍵字標色</strong>：VO 旁白藍色、SFX 橘色、BGM 紫色、字卡磚紅、人名台詞綠色</li><li><strong>章節標題</strong>：黑底白字橫幅，分隔各空間段落，匯出時保留</li><li><strong>鏡頭語言快捷鍵</strong>：插入 CU/WS/DOLLY 等術語到畫面欄</li></ul></div>' +
     '<div class="guide-section"><h3>匯出</h3><ul><li><strong>🖨 PDF</strong>：瀏覽器列印 → 另存為 PDF，A4 直式。PDF 檔名使用腳本標題。</li><li><strong>📄 Word</strong>：下載真正的 .docx 表格文件，含頁首（標題+頁碼）與頁尾（頁碼）。完全離線可用。</li><li><strong>↓ JSON</strong>：備份完整專案，可重新匯入。</li><li>匯出時可選<strong>工作版</strong>（格線完整）或<strong>提案版</strong>（字體較大、留白增加）。</li></ul></div>' +
     '<div class="guide-section"><h3>📎 參考資料</h3><ul><li>支援圖片（全螢幕預覽）、PDF（嵌入預覽）、Word（文字預覽）、CSV/TXT 等</li><li>儲存在瀏覽器 IndexedDB，不上傳任何伺服器</li></ul></div>' +
