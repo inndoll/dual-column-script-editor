@@ -1271,7 +1271,7 @@ function showImportModal(){
         '<span style="font-size:11px;color:#bbb;flex-shrink:0">或貼上 JSON 代碼</span>' +
         '<div style="flex:1;height:1px;background:#e0e0e0"></div>' +
       '</div>' +
-      '<textarea id="jsonPasteArea" rows="8" style="font-family:monospace;font-size:12px;margin-bottom:8px" placeholder=\'貼上從其他 AI 取得的 JSON 代碼，例如：\n{\n  "title": "腳本標題",\n  "rows": [\n    {"left": "畫面說明", "right": "VO：旁白"}\n  ]\n}\'></textarea>' +
+      '<textarea id="jsonPasteArea" rows="8" style="font-family:monospace;font-size:12px;margin-bottom:8px" placeholder=\'貼上 JSON 代碼，例如：\n{\n  "title": "腳本標題",\n  "rows": [\n    {"left": "畫面說明", "right": "VO：旁白"}\n  ]\n}\'></textarea>' +
       '<div style="display:flex;gap:8px;align-items:center">' +
         '<button class="primary" onclick="importJSONPaste()">✓ 匯入 JSON 代碼</button>' +
         '<span id="jsonPasteStatus" style="font-size:12px;color:#888"></span>' +
@@ -1387,7 +1387,7 @@ function importDocxInput(e){
       var kw=parseKeywordText(raw); if(kw&&kw.rows.length){rows=kw.rows;mode='keyword';} else{var lo=parseLooseText(raw);if(lo&&lo.rows.length){rows=lo.rows;mode='loose';}} }
     if(!rows.length){statusEl.innerHTML='<span style="color:#c0392b">無法解析文件內容。</span>';return;}
     pendingDocxRows=rows;
-    var mn={table:'Word 表格雙欄',keyword:'關鍵字段落',loose:'段落輪替'};
+    var mn={table:'Word 表格雙軌',keyword:'關鍵字段落',loose:'段落輪替'};
     statusEl.innerHTML='<span style="color:#185FA5">✓ '+mn[mode]+'，共 '+rows.length+' 列</span>';
     previewEl.innerHTML=buildPreviewTable(rows); previewEl.style.display='block';
     actionsEl.innerHTML='<div style="display:flex;gap:8px;margin-top:8px"><button class="primary" onclick="confirmDocxRows(true)">附加到末尾</button><button onclick="confirmDocxRows(false)">取代全部</button></div>'; actionsEl.style.display='block';
@@ -1408,7 +1408,7 @@ function showGuide(){
     '<div class="modal" style="max-height:90vh;overflow-y:auto">' +
     '<button class="modal-close" onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">✕</button>' +
     '<h2>？ 使用指南</h2>' +
-    '<div class="guide-section"><h3>什麼是雙欄式腳本？</h3><p>左欄「畫面」描述視覺資訊（場景、鏡頭、動作），右欄「聲音／字幕」描述聽覺資訊（VO 旁白、台詞、SFX 音效、BGM 音樂）及字幕文字。</p></div>' +
+    '<div class="guide-section"><h3>什麼是雙軌腳本？</h3><p>影片雙軌腳本是影視製作的標準格式，將畫面與聲音並排呈現。左欄「畫面」描述視覺資訊（場景、鏡頭、動作、構圖），右欄「聲音／字幕」描述聽覺資訊（VO 旁白、台詞、SFX 音效、BGM 音樂）及字幕文字。兩軌並列，讓導演、攝影、剪接師同時掌握畫面與聲音的對應關係。</p></div>' +
     '<div class="guide-section"><h3>基本操作</h3><ul><li>點擊欄位開始輸入；<strong>Enter</strong> 在行中間正常換行，在<strong>最後一行行尾</strong>時才會跳格或新增列</li><li><strong>Shift+Enter</strong>：強制在欄內換行（不跳格）</li><li><strong>Tab</strong>：切換欄位</li><li><strong>Ctrl+Z</strong>：復原上一步；<strong>Ctrl+Y</strong>：重做</li><li><strong>🗑 清空</strong>：清除所有腳本列，保留文件資訊</li><li><strong>🆕 新專案</strong>：清空全部，從頭開始</li></ul></div>' +
     '<div class="guide-section"><h3>⚙ 進階功能</h3><ul><li><strong>場次/鏡號/時間</strong>：開啟後每列出現額外欄位，時間欄自動計算總時長</li><li><strong>⟳ 自動編號</strong>：依章節或場次自動排列鏡號</li><li><strong>段落類型</strong>：每列左側下拉選單，對應不同背景色（場景切換/重點鏡頭/音效提示/備註）</li><li><strong>關鍵字標色</strong>：VO 旁白藍色、SFX 橘色、BGM 紫色、字卡磚紅、人名台詞綠色</li><li><strong>章節標題</strong>：黑底白字橫幅，分隔各空間段落，匯出時保留</li><li><strong>鏡頭語言快捷鍵</strong>：插入 CU/WS/DOLLY 等術語到畫面欄</li></ul></div>' +
     '<div class="guide-section"><h3>匯出</h3><ul><li><strong>🖨 PDF</strong>：瀏覽器列印 → 另存為 PDF，A4 直式。PDF 檔名使用腳本標題。</li><li><strong>📄 Word</strong>：下載真正的 .docx 表格文件，含頁首（標題+頁碼）與頁尾（頁碼）。完全離線可用。</li><li><strong>↓ JSON</strong>：備份完整專案，可重新匯入。</li><li>匯出時可選<strong>工作版</strong>（格線完整）或<strong>提案版</strong>（字體較大、留白增加）。</li></ul></div>' +
@@ -1440,25 +1440,34 @@ var TEMPLATES = {
     {type:'normal',scene:'B',shot:'02',duration:'10',left:'功能展示：逐一呈現',right:'VO：[功能1]、[功能2]\nSFX：操作音效'},
     {type:'scene-cut',scene:'C',shot:'01',duration:'5',left:'Call to Action：官網畫面',right:'VO：立即前往了解更多\n字卡：品牌 + LOGO'}
   ]},
-  home20p:{name:'居家設計開箱（20坪）',rows:[
-    {type:'scene-cut',scene:'S0',shot:'01',duration:'5',left:'黑底白字動態字卡\n建案：[建案名稱]\n坪數：20 坪\n格局：[房型]\n設計師：[設計師名]\n完工年份：[年份]',right:'BGM 淡入（沉穩鋼琴或弦樂）\n【無旁白，讓資訊卡靜靜說話】'},
-    {type:'key-shot',scene:'S1',shot:'01',duration:'8',left:'空鏡快剪序列（各 0.5-1 秒）：\n① CU 長虹玻璃光影折射\n② CU 木紋門片紋理\n③ CU 水磨石檯面反光\n④ CU 隱藏燈帶暖光\n⑤ WS 客廳俯角',right:'BGM 漸強\n【無旁白，純畫面建立氛圍】'},
-    {type:'key-shot',scene:'S1',shot:'02',duration:'12',left:'主持人 MS 對鏡頭，站在玄關門口\nDOLLY 緩慢向後拉，帶出空間輪廓',right:'VO：20 坪，在很多人眼裡是一個侷限。\n但在這個家裡，我們想讓它成為一種剛剛好的選擇。\n\n這支影片，帶你走進每一個設計決定背後的邏輯。'},
-    {type:'scene-cut',scene:'S2',shot:'01',duration:'4',left:'場次字卡：「玄關 ── 回家的第一層儀式」',right:'BGM 保持'},
-    {type:'normal',scene:'S2',shot:'02',duration:'15',left:'DOLLY IN 從大門口緩推進玄關\nCU：長虹玻璃光影條紋\nCU：玄關地坪材質',right:'VO：玄關只有一坪左右，採光來源只有大門。\n設計師選擇用長虹玻璃做隔屏，\n不是為了好看，而是讓光可以繼續往內走。'},
-    {type:'scene-cut',scene:'S3',shot:'01',duration:'4',left:'場次字卡：「客廳 ── 讓 20 坪感覺更大的方法」',right:'BGM 輕微轉換'},
-    {type:'normal',scene:'S3',shot:'02',duration:'18',left:'WS 客廳全景\nPAN 從電視牆緩搖至落地窗\nCU：電視牆材質特寫\nCU：燈帶出光細節',right:'VO：客廳沒有主燈。\n間接照明讓光從邊緣漫出來，空間的邊界就消失了。\n\n這面電視牆用了石皮，有重量，但選帶木紋感的，就有了溫度。'},
-    {type:'scene-cut',scene:'S4',shot:'01',duration:'4',left:'場次字卡：「餐廳 ── 小空間裡的儀式感」',right:'BGM 持續'},
-    {type:'normal',scene:'S4',shot:'02',duration:'15',left:'MS 餐桌全景\nCU：餐桌吊燈光影\nCU：桌面材質',right:'VO：設計師把餐廳往窗邊移，讓自然光直接落在桌上。\n吃飯這件事，在這裡變得不一樣了。'},
-    {type:'scene-cut',scene:'S5',shot:'01',duration:'4',left:'場次字卡：「廚房 ── 消失的收納」',right:'BGM 持續'},
-    {type:'normal',scene:'S5',shot:'02',duration:'16',left:'WS 廚房整體\nCU：門片一致性（隱藏把手）\nCU：按壓式開關門片動作',right:'VO：所有門片統一用了霧面發泡板，沒有把手，靠按壓開關。\n整面牆看起來是一塊板子，不是一個廚房。'},
-    {type:'scene-cut',scene:'S6',shot:'01',duration:'4',left:'場次字卡：「臥室 ── 光，是最好的材料」',right:'BGM 轉為更輕柔版本'},
-    {type:'normal',scene:'S6',shot:'02',duration:'18',left:'DOLLY IN 從門口緩推進臥室\nCU：窗簾透光紋理\nCU：床頭壁燈暖光\nWS 臥室整體',right:'VO：臥室只做了一件事——讓光進來。\n\n窗簾選了半透光的材質，清晨的光不是刺眼的，是漫進來的。'},
-    {type:'scene-cut',scene:'S7',shot:'01',duration:'4',left:'場次字卡：「衛浴 ── 日常裡的小奢侈」',right:'BGM 持續'},
-    {type:'normal',scene:'S7',shot:'02',duration:'14',left:'WS 衛浴整體\nCU：磁磚花色或石材紋理\nCU：龍頭五金細節\nCU：水流慢動作',right:'VO：衛浴是屋主說，想要花多一點預算的地方。\n每天早上刷牙的時候，想要有一點點享受的感覺。'},
-    {type:'scene-cut',scene:'S9',shot:'01',duration:'6',left:'空鏡剪輯（結尾版）：\n① 傍晚光線打入客廳\n② 窗外視野（散焦）\n③ 玄關大門推鏡',right:'VO：一個家好不好住，更多時候，是它有沒有把你的生活放進去。\n這個 20 坪，我覺得做到了。'},
-    {type:'key-shot',scene:'S9',shot:'02',duration:'10',left:'主持人 MS 面對鏡頭，客廳全景背景',right:'VO：如果你現在也在規劃裝潢，有任何想聊的，都可以在留言告訴我。\n你最在意的，是哪個空間？'},
-    {type:'scene-cut',scene:'S9',shot:'03',duration:'8',left:'結尾字卡動畫：\n「留言告訴我：你最想改造哪個空間？」\n「訂閱頻道，看更多居家設計開箱」\n頻道 Logo',right:'VO：我是 [主持人名]，我們下支影片見。\nBGM 淡出'}
+  home20p:{name:'居家設計開箱',rows:[
+    {type:'scene-cut',scene:'S0',shot:'01',duration:'6',left:'黑底白字動態字卡，逐行淡入：\n建案：禾沐居\n坪數：22 坪\n格局：2房1廳1衛\n設計師：陳柏瑋（沐光設計）\n完工：2024',right:'BGM 淡入：低沉鋼琴，節奏緩慢\nSFX：細微紙張翻動聲\n【無旁白】'},
+    {type:'key-shot',scene:'S1',shot:'01',duration:'7',left:'快剪空鏡（各約 0.8 秒）：\nCU 木百葉光影在地板的條紋\nCU 石紋磁磚的礦物毛孔\nCU 黃銅把手的弧面反光\nCU 白紗窗簾被風吹起的瞬間\nWS 客廳全景，自然光充滿',right:'BGM 漸強，帶入空間感\n【無旁白，純畫面與音樂】'},
+    {type:'key-shot',scene:'S1',shot:'02',duration:'14',left:'屋主陳小姐 MS，站在玄關，側身倚門框\n表情平靜，視線望向室內\nDOLLY 從她身後緩推，帶出客廳全景',right:'VO：我以前很怕小坪數。\n總覺得住進去，會喘不過氣。\n\n但這個家落成的那天，\n我在客廳坐了很久，什麼都沒做。\n就只是坐著。'},
+    {type:'note',scene:'S1',shot:'',duration:'',left:'【字卡疊加】\n「禾沐居 ── 22坪，一個人住剛好，兩個人住也夠」\n細字體，白字，右下角淡入',right:'BGM 微降，留白感'},
+    {type:'chapter',chapter:'玄關 ── 第一步踩進來的感覺'},
+    {type:'scene-cut',scene:'S2',shot:'01',duration:'4',left:'場次字卡：「玄關」\n搭配該空間代表性材質特寫作背景',right:'BGM 持續'},
+    {type:'normal',scene:'S2',shot:'02',duration:'16',left:'DOLLY IN 從大門外緩推入玄關\nCU：格柵屏風投影在地板的光條\nCU：鞋櫃門片（無把手，霧面灰）\nCU：玄關燈（嵌燈，光圈落在地坪）\nMS：屋主換鞋，動作自然生活感',right:'VO：玄關只有九十公分寬。\n進門第一件事，設計師做的不是鞋櫃，\n而是一道格柵屏風。\n\n它沒有擋住什麼，\n但讓你進門的那一步，有了一個節奏。'},
+    {type:'sfx',scene:'S2',shot:'03',duration:'4',left:'CU 格柵透光特寫，慢動作\n光線穿透，在地板形成細長光條',right:'BGM：輕微弦樂短句帶入\n【無旁白，情緒轉換點】'},
+    {type:'chapter',chapter:'客廳 ── 光是主角'},
+    {type:'scene-cut',scene:'S3',shot:'01',duration:'4',left:'場次字卡：「客廳」',right:'BGM 持續，稍微開闊'},
+    {type:'normal',scene:'S3',shot:'02',duration:'20',left:'WS 客廳全景，落地窗自然光充滿\nPAN 從電視牆緩搖至落地窗\nCU：TV 牆——橡木染色木皮，無縫接合\nCU：沙發側面，米色布料紋理\nCU：地毯邊緣，羊毛編織感\nRANDOM：自然光在白牆上移動的光影',right:'VO：客廳沒有主燈。\n這是設計師堅持的一件事。\n\n他說，主燈會讓天花板往下壓。\n把燈藏起來，光從四個邊漫出來，\n空間就沒有邊界了。\n\n電視牆用橡木，不是大理石。\n屋主說她想要暖的，不想要冷的。'},
+    {type:'key-shot',scene:'S3',shot:'03',duration:'8',left:'RACK FOCUS：前景植栽散焦 → 拉焦至遠景落地窗\nCU：窗框鋁料細節，霧黑色\nMS：屋主坐在沙發閱讀，側光打臉',right:'VO：落地窗向東，早上九點以前，\n陽光會斜著打進來。\n她說，那是她一天裡最喜歡的一個小時。'},
+    {type:'chapter',chapter:'廚房 ── 讓人願意動手做飯的設計'},
+    {type:'scene-cut',scene:'S4',shot:'01',duration:'4',left:'場次字卡：「廚房」',right:'BGM 持續'},
+    {type:'normal',scene:'S4',shot:'02',duration:'18',left:'WS 廚房整體，開放式與客廳相連\nCU：中島檯面——雪白人造石，無縫\nCU：吊櫃門片開啟，內部分格收納\nCU：水龍頭黃銅色，出水細節\nINSERT：爐台上煮水壺冒出的蒸氣（慢動作）',right:'VO：她說她其實不太做飯。\n但搬進來之後，開始想下廚了。\n\n設計師把這個問題想得很清楚：\n讓人願意進廚房的，不是功能，\n是感覺。\n\n中島夠大，能備料，能放咖啡，\n能坐在那邊發呆。'},
+    {type:'sfx',scene:'S4',shot:'03',duration:'5',left:'屋主在中島泡咖啡，動作自然\nCU：咖啡緩緩注入杯中（慢動作）\nCU：杯子放在石面上，瓷與石的接觸',right:'SFX：水流聲、瓷器碰觸聲（清脆）\nBGM 持續'},
+    {type:'chapter',chapter:'臥室 ── 睡前最後看到的光'},
+    {type:'scene-cut',scene:'S5',shot:'01',duration:'4',left:'場次字卡：「臥室」',right:'BGM 轉為更安靜、更私密的版本'},
+    {type:'normal',scene:'S5',shot:'02',duration:'18',left:'DOLLY IN 從門口緩推入臥室\nCU：床頭板——亞麻布包覆，有手感的凹凸紋\nCU：床頭左側壁燈，暖光朝下\nCU：窗簾自然垂落，半透光\nSLOW MOTION：窗簾因微風輕微飄動\nWS 臥室整體，呈現留白比例',right:'VO：臥室裡唯一的光源，\n是床頭兩側的壁燈。\n\n設計師說，睡前最後看到的光，\n決定你帶著什麼感受入睡。\n\n這裡的光是往下的，是收的，\n不是往上撐開空間的那種。'},
+    {type:'key-shot',scene:'S5',shot:'03',duration:'8',left:'MS：屋主側躺在床，自然光側打輪廓\n不看鏡頭，視線望向窗外\nCU：棉被邊緣，鬆散自然的皺褶',right:'VO：她說，這裡是她第一個，\n真的覺得「回家了」的地方。\n\n【停頓 2 秒】'},
+    {type:'chapter',chapter:'衛浴 ── 五分鐘的獨處'},
+    {type:'scene-cut',scene:'S6',shot:'01',duration:'4',left:'場次字卡：「衛浴」',right:'BGM 持續'},
+    {type:'normal',scene:'S6',shot:'02',duration:'14',left:'WS 衛浴整體\nCU：六角磚地坪，灰白交錯\nCU：圓形鏡面，鏡後暗藏燈帶\nCU：洗手台面——薄板石材\nCU：水流慢動作，黃銅龍頭出水',right:'VO：衛浴不大，\n但設計師給了它一個圓形鏡，\n一個很寬的洗手台。\n\n屋主說，她每天早上站在這裡，\n大概是一天裡，\n最安靜的五分鐘。'},
+    {type:'chapter',chapter:'結尾'},
+    {type:'scene-cut',scene:'S7',shot:'01',duration:'8',left:'結尾空鏡剪輯（慢節奏）：\n傍晚斜光打入客廳，光塵在空中\n屋主在中島靜靜喝咖啡，背對鏡頭\n玄關格柵的光條，緩緩移動\nWS 全宅俯角（若有條件）',right:'VO：住進一個設計過的家，\n改變的不是你的生活習慣，\n而是你跟自己相處的方式。\n\nBGM 漸強後緩落'},
+    {type:'key-shot',scene:'S7',shot:'02',duration:'10',left:'設計師陳柏瑋 MCU，坐於空間一隅\n表情自然，非演講姿態',right:'設計師 OS（同期聲）：\n「我設計這個空間的時候，\n一直在想一件事——\n她一個人住，她需要的不是功能，\n是一種被照顧的感覺。\n\n我希望每一個細節，\n都讓她覺得：這裡是為我準備的。」'},
+    {type:'scene-cut',scene:'S7',shot:'03',duration:'8',left:'結尾字卡動畫：\n「禾沐居｜22坪｜沐光設計」\n「你最在意家裡的哪個角落？留言告訴我」\n頻道 Logo 淡入',right:'VO：我是 [主持人名]，我們下支影片見。\nBGM 淡出至靜音'}
   ]}
 };
 
