@@ -116,6 +116,31 @@ tr.t-chapter td{border-color:#1a1a1a;padding:0}
 .chapter-badge{font-size:10px;color:#666;background:#333;padding:2px 7px;border-radius:10px;flex-shrink:0}
 .chapter-act-btn{border:none;background:transparent;color:#555;font-size:11px;padding:3px 5px;cursor:pointer;border-radius:3px}
 .chapter-act-btn:hover{background:#333;color:#fff}
+/* 章節時長標籤 */
+.chapter-dur-badge{font-size:10px;color:#aaa;background:#2a2a2a;padding:2px 8px;border-radius:10px;flex-shrink:0;font-variant-numeric:tabular-nums}
+/* 時長分析面板 */
+.dur-panel{position:fixed;top:50%;right:20px;transform:translateY(-50%);width:300px;background:#fff;border:1px solid #ddd;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:150;display:none;flex-direction:column;max-height:80vh}
+.dur-panel.open{display:flex}
+.dur-panel-head{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid #eee;flex-shrink:0}
+.dur-panel-head h3{font-size:14px;font-weight:600;color:#1a1a1a;flex:1;margin:0}
+.dur-panel-close{border:none;background:none;font-size:18px;cursor:pointer;color:#aaa;padding:0}
+.dur-panel-close:hover{color:#333}
+.dur-panel-body{overflow-y:auto;padding:12px 16px;flex:1}
+.dur-mode-row{display:flex;gap:8px;margin-bottom:12px}
+.dur-mode-btn{flex:1;font-size:11px;padding:5px 6px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;color:#555;text-align:center}
+.dur-mode-btn.active{background:#185FA5;color:#fff;border-color:#185FA5}
+.dur-section{margin-bottom:10px;padding:8px 10px;background:#f8f8f5;border-radius:8px}
+.dur-section-title{font-size:11px;font-weight:600;color:#666;margin-bottom:5px;display:flex;align-items:center;gap:6px}
+.dur-section-time{margin-left:auto;font-size:12px;font-weight:700;color:#185FA5;font-variant-numeric:tabular-nums}
+.dur-row-item{display:flex;justify-content:space-between;font-size:11px;color:#888;padding:2px 0;line-height:1.6}
+.dur-row-item.estimated{color:#b8860b}
+.dur-row-item.manual{color:#185FA5}
+.dur-total-bar{background:#eef2f8;border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.dur-total-label{font-size:12px;font-weight:600;color:#555}
+.dur-total-val{font-size:18px;font-weight:700;color:#185FA5;font-variant-numeric:tabular-nums}
+.dur-legend{display:flex;gap:10px;font-size:10px;color:#aaa;margin-bottom:8px}
+.dur-legend span{display:flex;align-items:center;gap:3px}
+.dur-legend-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
 /* 隱藏欄位 */
 .col-scene-th,.col-scene-td,.col-shot-th,.col-shot-td,.col-dur-th,.col-dur-td{display:none}
 .show-scene .col-scene-th,.show-scene .col-scene-td{display:table-cell}
@@ -205,6 +230,7 @@ textarea:focus{outline:none;border-color:#185FA5}
   <div class="toolbar-sep"></div>
   <button onclick="showGuide()">？ 指南</button>
   <button onclick="showTemplates()">📋 範本</button>
+  <button onclick="toggleDurPanel()">⏱ 時長</button>
   <div class="toolbar-sep"></div>
   <button id="btnSettings" onclick="toggleSettings()">⚙ 進階</button>
   <button id="btnSidebar" onclick="toggleSidebar()" class="active-panel">◀ 側欄</button>
@@ -231,7 +257,12 @@ textarea:focus{outline:none;border-color:#185FA5}
   </div>
   <div class="settings-sep"></div>
   <div class="settings-group">
-    <strong style="font-size:11px;color:#888;margin-right:2px">鏡頭語言：</strong>
+    <strong style="font-size:11px;color:#888;margin-right:2px">時長估算：</strong>
+    <label><input type="checkbox" id="ckAutoEst" onchange="toggleAutoEstimate(this.checked)" checked> 自動估算</label>
+    <span style="font-size:11px;color:#aaa">依據</span>
+    <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer"><input type="radio" name="estMode" value="voice" id="estVoice" onchange="setEstimateMode('voice')" checked style="accent-color:#185FA5"> 聲音欄</label>
+    <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer"><input type="radio" name="estMode" value="visual" id="estVisual" onchange="setEstimateMode('visual')" style="accent-color:#185FA5"> 畫面欄</label>
+  </div>
     <label><input type="checkbox" id="ckShots" onchange="toggleShotBar(this.checked)"> 快捷按鈕</label>
   </div>
   <span class="total-duration" id="totalDuration" style="display:none">總時長：--</span>
@@ -314,6 +345,17 @@ textarea:focus{outline:none;border-color:#185FA5}
 </div>
 <div class="status" id="status"></div>
 <div id="modalContainer"></div>
+
+<!-- 時長分析面板 -->
+<div class="dur-panel" id="durPanel">
+  <div class="dur-panel-head">
+    <h3>⏱ 時長分析</h3>
+    <button class="dur-panel-close" onclick="toggleDurPanel()">✕</button>
+  </div>
+  <div class="dur-panel-body" id="durPanelBody">
+    <div style="font-size:12px;color:#aaa;text-align:center;padding:20px">開啟時間欄並輸入腳本內容後，點此估算</div>
+  </div>
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 // ============================================================
@@ -322,7 +364,7 @@ textarea:focus{outline:none;border-color:#185FA5}
 
 // --- Global state ---
 var scriptDoc = {title:'',project:'',author:'',version:'v1.0',date:new Date().toLocaleDateString('zh-TW'),notes:'',rows:[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]};
-var colSettings = {scene:false,shot:false,dur:false,type:false,shotBar:false,highlight:true};
+var colSettings = {scene:false,shot:false,dur:false,type:false,shotBar:false,highlight:true,autoEstimate:true,estimateMode:'voice'};
 var selectedRow = null;
 var lastFocusedLeftTA = null;
 var pendingPasteRows = [];
@@ -478,6 +520,9 @@ function applyColSettings(){
   var ckType = document.getElementById('ckType'); if(ckType) ckType.checked = colSettings.type;
   var ckShots = document.getElementById('ckShots'); if(ckShots) ckShots.checked = colSettings.shotBar;
   var ckHl = document.getElementById('ckHighlight'); if(ckHl) ckHl.checked = colSettings.highlight;
+  var ckAE = document.getElementById('ckAutoEst'); if(ckAE) ckAE.checked = colSettings.autoEstimate;
+  var estV = document.getElementById('estVoice'); if(estV) estV.checked = colSettings.estimateMode==='voice';
+  var estVis = document.getElementById('estVisual'); if(estVis) estVis.checked = colSettings.estimateMode==='visual';
 }
 function toggleCol(col,val){ colSettings[col] = val; saveColSettings(); applyColSettings(); }
 function toggleTypeCol(val){ colSettings.type = val; saveColSettings(); applyColSettings(); }
@@ -525,6 +570,271 @@ function updateTotalDuration(){
   scriptDoc.rows.forEach(function(r){ total += parseDuration(r.duration); });
   var el = document.getElementById('totalDuration');
   if(el) el.textContent = '總時長：' + formatDuration(total) + (total ? ' (' + total + 's)' : '');
+  // 同步更新章節小計
+  updateChapterDurBadges();
+  // 若面板開著，同步刷新
+  if(document.getElementById('durPanel').classList.contains('open')) renderDurPanel();
+}
+
+// ── 時長估算引擎 ─────────────────────────────────────────────
+
+// 依聲音欄文字估算（按 VO 字數計算）
+function estimateByVoice(row){
+  var text = String(row.right||'');
+  // 只計算 VO 旁白行的字數
+  var voText = '';
+  text.split('\n').forEach(function(line){
+    var lt = line.trim();
+    if(/^(VO：|旁白：|VO:)/.test(lt)){
+      voText += lt.replace(/^(VO：|旁白：|VO:)/,'').trim();
+    } else if(/^(【|SFX：|BGM：|音效：|音樂：|字卡：|字幕：)/.test(lt)){
+      // 非口白行，略過
+    } else if(lt){
+      // 沒有前綴的行也算旁白（大綱模式）
+      voText += lt;
+    }
+  });
+  var charCount = voText.replace(/\s/g,'').length;
+  if(!charCount) return estimateByVisual(row); // 聲音欄沒文字就改用畫面欄
+  // 說話速度：每分鐘約 160 個中文字，換算成秒
+  var sec = Math.ceil(charCount / 160 * 60);
+  return Math.max(3, Math.min(sec, 120)); // 最少3秒，最多120秒
+}
+
+// 依畫面欄內容估算（按鏡頭數量與類型）
+function estimateByVisual(row){
+  if(row.type === 'scene-cut') return 4;  // 場景切換
+  if(row.type === 'sfx')       return 5;  // 音效提示
+  if(row.type === 'note')      return 0;  // 備註不計
+
+  var text = String(row.left||'');
+  if(!text.trim()) return 5; // 空列預設5秒
+
+  // 計算鏡頭關鍵字數量
+  var shotCount = 0;
+  var lines = text.split('\n');
+  lines.forEach(function(line){
+    if(/^(ECU|CU|MCU|MS|WS|EWS|PAN|TILT|DOLLY|ZOOM|RACK|POV|OTS|INSERT|CUTAWAY|B-ROLL|HANDHELD|RANDOM|SLOW\s*MOTION|慢動作)/i.test(line.trim())){
+      shotCount++;
+    }
+    // 圓圈數字也算一個鏡頭（如 ① ② ③）
+    var circles = line.match(/[①②③④⑤⑥⑦⑧⑨⑩]/g);
+    if(circles) shotCount += circles.length;
+  });
+
+  if(shotCount === 0) shotCount = 1;
+
+  // 依鏡頭類型給予基礎秒數
+  var basePerShot = 4;
+  if(/SLOW\s*MOTION|慢動作/i.test(text)) basePerShot = 6;
+  if(/DOLLY|PAN|TILT|RACK/i.test(text)) basePerShot = 5;
+  if(/ECU|CU/i.test(text)) basePerShot = 3;
+  if(/WS|EWS/i.test(text)) basePerShot = 5;
+
+  var sec = shotCount * basePerShot;
+  // 若是重點鏡頭多給一點時間
+  if(row.type === 'key-shot') sec = Math.round(sec * 1.3);
+
+  return Math.max(3, Math.min(sec, 90));
+}
+
+// 估算一列的秒數（根據目前模式）
+function estimateRowDuration(row){
+  if(row.type === 'chapter') return 0;
+  if(parseDuration(row.duration) > 0) return parseDuration(row.duration); // 已手動填的不動
+  return colSettings.estimateMode === 'voice'
+    ? estimateByVoice(row)
+    : estimateByVisual(row);
+}
+
+// 估算所有空白時間欄，寫入 duration 並重新渲染時間欄輸入框
+function runAutoEstimate(){
+  if(!colSettings.autoEstimate) return;
+  var changed = false;
+  scriptDoc.rows.forEach(function(row){
+    if(row.type === 'chapter') return;
+    if(parseDuration(row.duration) > 0) return; // 已填的不動
+    var est = colSettings.estimateMode === 'voice'
+      ? estimateByVoice(row)
+      : estimateByVisual(row);
+    if(est > 0){
+      row.duration = String(est);
+      // 更新 DOM 中的時間欄輸入框
+      var inp = document.querySelector('.mini-input[data-id="'+row.id+'"][data-field="duration"]');
+      if(inp && inp.value !== String(est)) inp.value = String(est);
+      changed = true;
+    }
+  });
+  if(changed){ saveDoc(); updateTotalDuration(); }
+}
+
+// debounce 版本（避免每次輸入都立即觸發）
+var _estTimer = null;
+function scheduleEstimate(){
+  if(!colSettings.autoEstimate) return;
+  clearTimeout(_estTimer);
+  _estTimer = setTimeout(function(){
+    runAutoEstimate();
+    if(document.getElementById('durPanel').classList.contains('open')) renderDurPanel();
+  }, 800);
+}
+
+// ── 章節時長小計 ──────────────────────────────────────────────
+function updateChapterDurBadges(){
+  // 算出每個 chapter 到下一個 chapter 之間的秒數小計
+  var currentChapterId = null;
+  var chapterTotals = {};
+  scriptDoc.rows.forEach(function(row){
+    if(row.type === 'chapter'){
+      currentChapterId = row.id;
+      chapterTotals[row.id] = 0;
+    } else if(currentChapterId){
+      chapterTotals[currentChapterId] += parseDuration(row.duration);
+    }
+  });
+  // 更新 DOM 中的徽章
+  Object.keys(chapterTotals).forEach(function(id){
+    var badge = document.querySelector('.chapter-dur-badge[data-id="'+id+'"]');
+    if(badge){
+      var sec = chapterTotals[id];
+      badge.textContent = sec ? formatDuration(sec) : '--';
+    }
+  });
+}
+
+// ── 時長分析面板 ─────────────────────────────────────────────
+var durPanelOpen = false;
+function toggleDurPanel(){
+  durPanelOpen = !durPanelOpen;
+  var panel = document.getElementById('durPanel');
+  panel.classList.toggle('open', durPanelOpen);
+  document.querySelector('button[onclick="toggleDurPanel()"]').classList.toggle('active-panel', durPanelOpen);
+  if(durPanelOpen) renderDurPanel();
+}
+
+function renderDurPanel(){
+  var body = document.getElementById('durPanelBody');
+
+  // 計算每列（含估算）
+  var rows = scriptDoc.rows;
+  var totalEst = 0, totalManual = 0, totalAll = 0;
+  var sections = []; // [{title, rows:[{label,sec,isManual,isEstimated}], total}]
+  var currentSection = {title:'（章節前）', rows:[], total:0};
+
+  rows.forEach(function(row){
+    if(row.type === 'chapter'){
+      if(currentSection.rows.length) sections.push(currentSection);
+      currentSection = {title: row.chapter||'章節', rows:[], total:0};
+      return;
+    }
+    var manualSec = parseDuration(row.duration);
+    var estSec = colSettings.estimateMode === 'voice' ? estimateByVoice(row) : estimateByVisual(row);
+    var useSec = manualSec > 0 ? manualSec : estSec;
+    var isManual = manualSec > 0;
+    var label = (row.left||'').split('\n')[0].slice(0,22) || '（空白列）';
+    currentSection.rows.push({label:label, sec:useSec, isManual:isManual});
+    currentSection.total += useSec;
+    totalAll += useSec;
+    if(isManual) totalManual += useSec; else totalEst += useSec;
+  });
+  sections.push(currentSection);
+
+  var html = '';
+
+  // 模式切換
+  html += '<div class="dur-mode-row">' +
+    '<button class="dur-mode-btn'+(colSettings.estimateMode==='voice'?' active':'')+'" onclick="setEstimateMode(\'voice\');renderDurPanel()">依聲音欄估算</button>' +
+    '<button class="dur-mode-btn'+(colSettings.estimateMode==='visual'?' active':'')+'" onclick="setEstimateMode(\'visual\');renderDurPanel()">依畫面欄估算</button>' +
+    '</div>';
+
+  // 總時長
+  html += '<div class="dur-total-bar">' +
+    '<span class="dur-total-label">預估總時長</span>' +
+    '<span class="dur-total-val">' + formatDuration(totalAll) + '</span>' +
+    '</div>';
+
+  // 圖例
+  html += '<div class="dur-legend">' +
+    '<span><span class="dur-legend-dot" style="background:#185FA5"></span>手動填入</span>' +
+    '<span><span class="dur-legend-dot" style="background:#b8860b"></span>自動估算</span>' +
+    '</div>';
+
+  // 各章節
+  sections.forEach(function(sec){
+    if(!sec.rows.length) return;
+    html += '<div class="dur-section">' +
+      '<div class="dur-section-title">' +
+        escHtml(sec.title.slice(0,20)) +
+        '<span class="dur-section-time">' + formatDuration(sec.total) + '</span>' +
+      '</div>';
+    sec.rows.forEach(function(r){
+      html += '<div class="dur-row-item ' + (r.isManual?'manual':'estimated') + '">' +
+        '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(r.label) + '</span>' +
+        '<span style="margin-left:8px;flex-shrink:0">' + (r.sec ? formatDuration(r.sec) : '--') + '</span>' +
+        '</div>';
+    });
+    html += '</div>';
+  });
+
+  // 分布說明
+  if(totalAll > 0){
+    var estPct = Math.round(totalEst/totalAll*100);
+    html += '<div style="font-size:11px;color:#bbb;margin-top:4px;text-align:right">' +
+      '手動：' + formatDuration(totalManual) + '　估算：' + formatDuration(totalEst) +
+      ' (' + (100-estPct) + '% / ' + estPct + '%)' +
+      '</div>';
+  }
+
+  body.innerHTML = html;
+}
+
+// 產生時長摘要文字行（供匯出使用）
+function buildDurSummaryLines(){
+  var total = 0;
+  var chapterTotals = [];
+  var currentChapter = null;
+  var currentTotal = 0;
+  scriptDoc.rows.forEach(function(row){
+    if(row.type === 'chapter'){
+      if(currentChapter !== null) chapterTotals.push({title:currentChapter, sec:currentTotal});
+      currentChapter = row.chapter || '章節';
+      currentTotal = 0;
+    } else {
+      var sec = parseDuration(row.duration) || (colSettings.estimateMode==='voice' ? estimateByVoice(row) : estimateByVisual(row));
+      currentTotal += sec;
+      total += sec;
+    }
+  });
+  if(currentChapter !== null) chapterTotals.push({title:currentChapter, sec:currentTotal});
+  if(!total) return [];
+  var lines = ['── 時長摘要（預估）'];
+  if(chapterTotals.length > 1){
+    chapterTotals.forEach(function(c){ lines.push(c.title.slice(0,18) + '：' + formatDuration(c.sec)); });
+  }
+  lines.push('全片預估總時長：' + formatDuration(total));
+  return lines;
+}
+
+function toggleAutoEstimate(val){
+  colSettings.autoEstimate = val;
+  saveColSettings();
+  if(val) runAutoEstimate();
+}
+function setEstimateMode(mode){
+  colSettings.estimateMode = mode;
+  saveColSettings();
+  // 清空所有「估算值」（非手動的），讓 runAutoEstimate 重新填
+  scriptDoc.rows.forEach(function(row){
+    if(row.type==='chapter') return;
+    // 如果時間欄的值等於上一次估算的值，清掉讓它重新估
+    // 簡化做法：只清掉 duration 欄，讓使用者知道模式換了
+  });
+  if(colSettings.autoEstimate) runAutoEstimate();
+  // 同步 radio 按鈕狀態
+  var v = document.getElementById('estVisual');
+  var vo = document.getElementById('estVoice');
+  if(v) v.checked = mode==='visual';
+  if(vo) vo.checked = mode==='voice';
 }
 
 // --- Meta bar ---
@@ -599,6 +909,7 @@ function buildRow(row, i, tbody){
       '<span style="font-size:13px;color:#aaa">▍</span>' +
       '<input class="chapter-input" data-id="' + row.id + '" value="' + escHtml(row.chapter||'') + '" placeholder="輸入章節標題…" oninput="updateChapter(this)">' +
       '<span class="chapter-badge">章節</span>' +
+      '<span class="chapter-dur-badge" data-id="' + row.id + '">--</span>' +
       '<button class="chapter-act-btn" onclick="moveRow(\'' + row.id + '\',-1)" title="上移">▲</button>' +
       '<button class="chapter-act-btn" onclick="moveRow(\'' + row.id + '\',1)" title="下移">▼</button>' +
       '<button class="chapter-act-btn" onclick="deleteRow(\'' + row.id + '\')" title="刪除" style="color:#E24B4A">✕</button>' +
@@ -652,6 +963,7 @@ function buildRow(row, i, tbody){
         r[ta.dataset.side === 'left' ? 'left' : 'right'] = ta.value;
         autoResize(ta);
         saveDoc();
+        scheduleEstimate();
       }
     });
     ta.addEventListener('keydown', function(e){
@@ -1016,6 +1328,11 @@ function doExport(target){ var opts=getExportOptions(); document.getElementById(
 function doPdfExport(opts){
   var ph=document.getElementById('printHeader');
   ph.innerHTML='<strong>'+escHtml(scriptDoc.title||'未命名腳本')+'</strong>&emsp;'+(scriptDoc.project?'專案：'+escHtml(scriptDoc.project)+'　':'')+(scriptDoc.author?'作者：'+escHtml(scriptDoc.author)+'　':'')+'版本：'+escHtml(scriptDoc.version||'')+'　日期：'+escHtml(scriptDoc.date||'');
+  // 附上時長摘要
+  var durLines = buildDurSummaryLines();
+  if(durLines.length){
+    ph.innerHTML += '<br><span style="font-size:8pt;color:#888">' + durLines.map(escHtml).join('　') + '</span>';
+  }
   var prev={scene:colSettings.scene,shot:colSettings.shot,dur:colSettings.dur,type:colSettings.type};
   colSettings.scene=opts.scene; colSettings.shot=opts.shot; colSettings.dur=opts.dur; colSettings.type=opts.type;
   applyColSettings();
@@ -1113,6 +1430,9 @@ function doDocxExport(opts){
 
     var metaLines = [scriptDoc.title&&('腳本標題：'+scriptDoc.title),scriptDoc.project&&('專案名稱：'+scriptDoc.project),(scriptDoc.author||scriptDoc.version)&&('作者：'+(scriptDoc.author||'')+'　版本：'+(scriptDoc.version||'')+'　日期：'+(scriptDoc.date||'')),scriptDoc.notes&&('備註：'+scriptDoc.notes)].filter(Boolean);
     if(isProposal&&opts.dur){ var tot=0; scriptDoc.rows.forEach(function(r){tot+=parseDuration(r.duration);}); if(tot) metaLines.push('總時長：'+formatDuration(tot)); }
+    // 不論模式，附上時長摘要（含估算）
+    var durSummaryLines = buildDurSummaryLines();
+    if(durSummaryLines.length) metaLines = metaLines.concat(durSummaryLines);
 
     var headerParas = para(scriptDoc.title||'腳本',true,TITLE_SZ,'111111',undefined,isProposal?200:160) + metaLines.map(function(t){return para(t,false,META_SZ,'888888',undefined,80);}).join('') + '<w:p><w:pPr><w:spacing w:after="240"/></w:pPr></w:p>';
 
@@ -1496,6 +1816,8 @@ initDB().then(function(){
   renderMeta(); renderHead(); renderBody(); renderRefList();
   applyColSettings();
   if(colSettings.shotBar) document.getElementById('shotBar').classList.remove('hidden');
+  // 初始估算
+  setTimeout(function(){ runAutoEstimate(); updateChapterDurBadges(); }, 200);
 });
 </script>
 </body>
