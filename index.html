@@ -207,6 +207,27 @@ textarea:focus{outline:none;border-color:#185FA5}
   body.print-proposal-mode .cell-ta{font-size:13pt;line-height:2.1;padding:10pt 12pt}
 }
 .print-header{display:none}
+/* 多專案管理 */
+.proj-manager{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:500;display:flex;align-items:center;justify-content:center}
+.proj-modal{background:#fff;border-radius:14px;padding:28px;width:560px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,0.2)}
+.proj-modal h2{font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:4px}
+.proj-modal .sub{font-size:12px;color:#999;margin-bottom:16px}
+.proj-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.proj-item{border:1px solid #e0e0e0;border-radius:8px;padding:12px 14px;cursor:pointer;transition:border-color 0.12s,background 0.12s;display:flex;align-items:center;gap:12px}
+.proj-item:hover{border-color:#185FA5;background:#f5f8ff}
+.proj-item.active-proj{border-color:#185FA5;background:#eef2f8}
+.proj-item-info{flex:1;min-width:0}
+.proj-item-title{font-size:13px;font-weight:600;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.proj-item-meta{font-size:11px;color:#999;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.proj-item-badge{font-size:10px;background:#185FA5;color:#fff;border-radius:10px;padding:1px 7px;flex-shrink:0}
+.proj-item-del{border:none;background:none;color:#ccc;font-size:14px;cursor:pointer;padding:2px 4px;flex-shrink:0;border-radius:4px}
+.proj-item-del:hover{color:#E24B4A;background:#fff0f0}
+.proj-actions{display:flex;gap:8px;flex-wrap:wrap}
+/* 匯入拖曳區 */
+.import-drop-zone{border:2px dashed #c5d8f5;border-radius:8px;padding:18px;text-align:center;background:#f8faff;transition:border-color 0.15s,background 0.15s;margin-bottom:10px;cursor:pointer}
+.import-drop-zone.drag-over{border-color:#185FA5;background:#eef3fc}
+.import-drop-zone p{font-size:12px;color:#888;line-height:1.8;pointer-events:none}
+.import-drop-zone strong{color:#185FA5}
 </style>
 </head>
 <body>
@@ -219,6 +240,7 @@ textarea:focus{outline:none;border-color:#185FA5}
   <button onclick="moveSelectedRow(1)">▼ 下移</button>
   <div class="toolbar-sep"></div>
   <button onclick="newProject()" title="開新專案">🆕 新專案</button>
+  <button onclick="showProjectManager()" title="管理多個專案">📂 專案管理</button>
   <button onclick="clearAllRows()" class="danger" title="清空所有腳本列">🗑 清空</button>
   <div class="toolbar-sep"></div>
   <button onclick="saveManual()">💾 儲存</button>
@@ -347,6 +369,7 @@ textarea:focus{outline:none;border-color:#185FA5}
 </div>
 <div class="status" id="status"></div>
 <div id="modalContainer"></div>
+<div id="projManagerContainer"></div>
 
 <!-- 時長分析面板 -->
 <div class="dur-panel" id="durPanel">
@@ -376,6 +399,11 @@ var noteTags = [];
 var sidebarOpen = true;
 var settingsOpen = false;
 var DB = null;
+// --- 多專案管理 ---
+var PROJECT_LIST_KEY = 'tw_project_list';
+var ACTIVE_PROJ_KEY = 'tw_active_project';
+var projectList = []; // [{id, title, project, author, updatedAt}]
+var activeProjectId = null;
 
 // --- Undo / Redo 堆疊（管理結構性操作：新增/刪除/移動/複製列等）---
 var undoStack = [];   // 每個元素是 rows 的 JSON 字串快照
@@ -462,16 +490,47 @@ function dbDelete(id){ if(!DB)return; DB.transaction('files','readwrite').object
 
 // --- Save / Load ---
 function loadDoc(){
+  // 先載入專案清單
+  try{ var pl = localStorage.getItem(PROJECT_LIST_KEY); if(pl) projectList = JSON.parse(pl)||[]; }catch(e){}
+  activeProjectId = localStorage.getItem(ACTIVE_PROJ_KEY) || null;
+
+  var key = activeProjectId ? 'tw_script_doc_' + activeProjectId : 'tw_script_doc';
   try{
-    var s = localStorage.getItem('tw_script_doc');
+    var s = localStorage.getItem(key);
+    if(!s && activeProjectId) s = localStorage.getItem('tw_script_doc'); // 舊版相容
     if(s){ var d = JSON.parse(s); if(d&&d.rows){ d.rows = d.rows.map(function(r){ return Object.assign({type:'normal',scene:'',shot:'',duration:'',chapter:''},r); }); scriptDoc = d; }}
   }catch(e){}
   try{
     var cs = localStorage.getItem('tw_col_settings');
     if(cs) colSettings = Object.assign({scene:false,shot:false,dur:false,type:false,shotBar:false,highlight:true}, JSON.parse(cs));
   }catch(e){}
+
+  // 若無任何專案記錄，把目前文件登記為第一個
+  if(projectList.length === 0){
+    var firstId = activeProjectId || uid();
+    activeProjectId = firstId;
+    localStorage.setItem(ACTIVE_PROJ_KEY, firstId);
+    projectList = [{id:firstId, title:scriptDoc.title||'（未命名）', project:scriptDoc.project||'', author:scriptDoc.author||'', updatedAt:new Date().toLocaleString('zh-TW')}];
+    saveProjectList();
+    localStorage.setItem('tw_script_doc_' + firstId, JSON.stringify(scriptDoc));
+  }
 }
-function saveDoc(){ localStorage.setItem('tw_script_doc', JSON.stringify(scriptDoc)); showStatus('已自動儲存'); }
+function saveDoc(){
+  var key = activeProjectId ? 'tw_script_doc_' + activeProjectId : 'tw_script_doc';
+  localStorage.setItem(key, JSON.stringify(scriptDoc));
+  // 同步更新專案清單的摘要資訊
+  if(activeProjectId){
+    var entry = projectList.find(function(p){ return p.id === activeProjectId; });
+    if(entry){
+      entry.title = scriptDoc.title || '（未命名）';
+      entry.project = scriptDoc.project || '';
+      entry.author = scriptDoc.author || '';
+      entry.updatedAt = new Date().toLocaleString('zh-TW');
+      saveProjectList();
+    }
+  }
+  showStatus('已自動儲存');
+}
 function saveColSettings(){ localStorage.setItem('tw_col_settings', JSON.stringify(colSettings)); }
 function saveManual(){ saveDoc(); showStatus('已儲存 ✓',1000); }
 
@@ -1035,7 +1094,101 @@ function copyRow(id){ var i = scriptDoc.rows.findIndex(function(r){ return r.id=
 function deleteSelectedRow(){ if(selectedRow) deleteRow(selectedRow); else showStatus('請先點選要刪除的列'); }
 function moveSelectedRow(dir){ if(selectedRow) moveRow(selectedRow,dir); else showStatus('請先點選要移動的列'); }
 function clearAllRows(){ if(!confirm('確定清空所有腳本列？文件資訊會保留。'))return; pushUndo(); scriptDoc.rows=[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]; selectedRow=null; saveDoc(); renderBody(); showStatus('已清空',1000); }
-function newProject(){ if(!confirm('開新專案將清空所有內容。建議先用「↓ JSON」備份。\n確定繼續？'))return; undoStack=[]; redoStack=[]; scriptDoc={title:'',project:'',author:'',version:'v1.0',date:new Date().toLocaleDateString('zh-TW'),notes:'',rows:[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]}; selectedRow=null; saveDoc(); renderMeta(); renderBody(); showStatus('已建立新專案',1000); }
+function newProject(){
+  var name = prompt('新專案名稱（選填）');
+  if(name === null) return; // 按取消
+  var newId = uid();
+  var newDoc = {title:name||'', project:'', author:'', version:'v1.0', date:new Date().toLocaleDateString('zh-TW'), notes:'', rows:[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]};
+  // 儲存新專案
+  localStorage.setItem('tw_script_doc_' + newId, JSON.stringify(newDoc));
+  projectList.push({id:newId, title:name||'（未命名）', project:'', author:'', updatedAt:new Date().toLocaleString('zh-TW')});
+  saveProjectList();
+  // 切換到新專案
+  activeProjectId = newId;
+  localStorage.setItem(ACTIVE_PROJ_KEY, newId);
+  undoStack=[]; redoStack=[];
+  scriptDoc = newDoc;
+  selectedRow = null;
+  renderMeta(); renderBody();
+  showStatus('已建立新專案：' + (name||'未命名'), 1500);
+}
+
+// --- 多專案管理 ---
+function saveProjectList(){ localStorage.setItem(PROJECT_LIST_KEY, JSON.stringify(projectList)); }
+
+function switchProject(id){
+  if(id === activeProjectId){ document.getElementById('projManagerContainer').innerHTML=''; return; }
+  activeProjectId = id;
+  localStorage.setItem(ACTIVE_PROJ_KEY, id);
+  var key = 'tw_script_doc_' + id;
+  var s = localStorage.getItem(key);
+  undoStack=[]; redoStack=[];
+  if(s){
+    try{
+      var d = JSON.parse(s);
+      if(d&&d.rows){ d.rows = d.rows.map(function(r){ return Object.assign({type:'normal',scene:'',shot:'',duration:'',chapter:''},r); }); scriptDoc = d; }
+    }catch(e){}
+  } else {
+    scriptDoc = {title:'',project:'',author:'',version:'v1.0',date:new Date().toLocaleDateString('zh-TW'),notes:'',rows:[{id:uid(),type:'normal',scene:'',shot:'',duration:'',left:'',right:''}]};
+  }
+  selectedRow = null;
+  renderMeta(); renderBody();
+  document.getElementById('projManagerContainer').innerHTML='';
+  showStatus('已切換專案：' + (scriptDoc.title||'未命名'), 1500);
+}
+
+function deleteProject(id, e){
+  e.stopPropagation();
+  if(projectList.length <= 1){ showStatus('至少保留一個專案', 2000); return; }
+  var entry = projectList.find(function(p){ return p.id===id; });
+  if(!confirm('確定刪除專案「' + (entry?entry.title:'') + '」？\n此操作無法復原。')) return;
+  projectList = projectList.filter(function(p){ return p.id !== id; });
+  localStorage.removeItem('tw_script_doc_' + id);
+  saveProjectList();
+  // 若刪除的是目前專案，切換到第一個
+  if(id === activeProjectId){
+    switchProject(projectList[0].id);
+  } else {
+    showProjectManager();
+  }
+  showStatus('已刪除專案', 1500);
+}
+
+function showProjectManager(){
+  var container = document.getElementById('projManagerContainer');
+  var listHtml = projectList.map(function(p){
+    var isActive = p.id === activeProjectId;
+    return '<div class="proj-item' + (isActive?' active-proj':'') + '" onclick="switchProject(\'' + p.id + '\')">' +
+      (isActive ? '<span class="proj-item-badge">目前</span>' : '') +
+      '<div class="proj-item-info">' +
+        '<div class="proj-item-title">' + escHtml(p.title||'（未命名）') + '</div>' +
+        '<div class="proj-item-meta">' + escHtml(p.project||'') + (p.author?' · '+escHtml(p.author):'') + '　' + escHtml(p.updatedAt||'') + '</div>' +
+      '</div>' +
+      (!isActive ? '<button class="proj-item-del" onclick="deleteProject(\'' + p.id + '\',event)" title="刪除此專案">✕</button>' : '') +
+    '</div>';
+  }).join('');
+
+  container.innerHTML =
+    '<div class="proj-manager" onclick="closeProjManager(event)">' +
+    '<div class="proj-modal">' +
+      '<h2>📂 專案管理</h2>' +
+      '<p class="sub">點擊專案切換・目前共 ' + projectList.length + ' 個專案</p>' +
+      '<div class="proj-list">' + listHtml + '</div>' +
+      '<div class="proj-actions">' +
+        '<button class="primary" onclick="newProjectFromManager()">＋ 新增專案</button>' +
+        '<button onclick="document.getElementById(\'projManagerContainer\').innerHTML=\'\'">關閉</button>' +
+      '</div>' +
+    '</div></div>';
+}
+
+function closeProjManager(e){
+  if(e.target.classList.contains('proj-manager')) document.getElementById('projManagerContainer').innerHTML='';
+}
+
+function newProjectFromManager(){
+  document.getElementById('projManagerContainer').innerHTML='';
+  newProject();
+}
 
 function updateRowType(sel){ var r=scriptDoc.rows.find(function(r){ return r.id===sel.dataset.id; }); if(!r)return; r.type=sel.value; var tr=sel.closest('tr'); if(tr){ tr.className='t-'+r.type; if(selectedRow===r.id) tr.classList.add('row-selected'); } saveDoc(); }
 function updateRowField(input){ var r=scriptDoc.rows.find(function(r){ return r.id===input.dataset.id; }); if(r) r[input.dataset.field]=input.value; saveDoc(); }
@@ -1575,7 +1728,7 @@ function buildPreviewTable(rows){
 function showImportModal(){
   document.getElementById('modalContainer').innerHTML =
     '<div class="modal-bg" onclick="closeModal(event)">' +
-    '<div class="modal">' +
+    '<div class="modal" id="importModal" ondragover="importModalDragOver(event)" ondragleave="importModalDragLeave(event)" ondrop="importModalDrop(event)">' +
     '<button class="modal-close" onclick="document.getElementById(\'modalContainer\').innerHTML=\'\'">✕</button>' +
     '<h2>📥 匯入腳本</h2>' +
     '<div style="display:flex;gap:0;border-bottom:1px solid #e0e0e0;margin-bottom:16px">' +
@@ -1585,15 +1738,17 @@ function showImportModal(){
     '</div>' +
     '<div id="panel-json">' +
       '<p style="font-size:12px;color:#888;margin-bottom:10px">支援上傳 .json 檔案，或直接貼上 JSON 代碼。</p>' +
-      '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">' +
-        '<input type="file" accept=".json" id="jsonFileInput" onchange="importJSONFile(event)" style="font-size:13px;flex:1">' +
+      '<div class="import-drop-zone" id="jsonDropZone" onclick="document.getElementById(\'jsonFileInput\').click()" ondragover="zoneDragOver(event,\'jsonDropZone\')" ondragleave="zoneDragLeave(\'jsonDropZone\')" ondrop="zoneFileDrop(event,\'json\')">' +
+        '<strong>點擊選取 或 拖曳 .json 檔案至此</strong>' +
+        '<p>支援 JSON 專案備份檔</p>' +
+        '<input type="file" accept=".json" id="jsonFileInput" onchange="importJSONFile(event)" style="display:none">' +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
         '<div style="flex:1;height:1px;background:#e0e0e0"></div>' +
         '<span style="font-size:11px;color:#bbb;flex-shrink:0">或貼上 JSON 代碼</span>' +
         '<div style="flex:1;height:1px;background:#e0e0e0"></div>' +
       '</div>' +
-      '<textarea id="jsonPasteArea" rows="8" style="font-family:monospace;font-size:12px;margin-bottom:8px" placeholder=\'貼上 JSON 代碼，例如：\n{\n  "title": "腳本標題",\n  "rows": [\n    {"left": "畫面說明", "right": "VO：旁白"}\n  ]\n}\'></textarea>' +
+      '<textarea id="jsonPasteArea" rows="6" style="font-family:monospace;font-size:12px;margin-bottom:8px" placeholder=\'貼上 JSON 代碼，例如：\n{\n  "title": "腳本標題",\n  "rows": [\n    {"left": "畫面說明", "right": "VO：旁白"}\n  ]\n}\'></textarea>' +
       '<div style="display:flex;gap:8px;align-items:center">' +
         '<button class="primary" onclick="importJSONPaste()">✓ 匯入 JSON 代碼</button>' +
         '<span id="jsonPasteStatus" style="font-size:12px;color:#888"></span>' +
@@ -1601,7 +1756,12 @@ function showImportModal(){
     '</div>' +
     '<div id="panel-text" style="display:none">' +
       '<div class="info-box">自動偵測：① Markdown 表格 ② 關鍵字標記（畫面：/VO：/SFX：）③ 段落輪替</div>' +
-      '<textarea id="pasteImport" rows="8" style="margin-bottom:10px;font-family:monospace;font-size:12px" placeholder="貼上文字…"></textarea>' +
+      '<div class="import-drop-zone" id="mdDropZone" onclick="document.getElementById(\'mdFileInput\').click()" ondragover="zoneDragOver(event,\'mdDropZone\')" ondragleave="zoneDragLeave(\'mdDropZone\')" ondrop="zoneFileDrop(event,\'md\')">' +
+        '<strong>點擊選取 或 拖曳 .md / .txt 檔案至此</strong>' +
+        '<p>也可直接在下方貼上文字</p>' +
+        '<input type="file" accept=".md,.markdown,.txt" id="mdFileInput" onchange="importMdFile(event)" style="display:none">' +
+      '</div>' +
+      '<textarea id="pasteImport" rows="6" style="margin-bottom:10px;font-family:monospace;font-size:12px" placeholder="貼上文字…"></textarea>' +
       '<div id="pastePreview" style="display:none;margin-bottom:10px"></div>' +
       '<div style="display:flex;gap:8px;align-items:center">' +
         '<button class="primary" onclick="previewPaste()">🔍 預覽解析</button>' +
@@ -1611,7 +1771,11 @@ function showImportModal(){
     '</div>' +
     '<div id="panel-docx" style="display:none">' +
       '<div class="info-box">優先解析 Word 表格 → 關鍵字段落 → 版面分欄（顯示警告）</div>' +
-      '<input type="file" accept=".docx" onchange="importDocxInput(event)" style="font-size:13px;width:100%;margin-bottom:10px">' +
+      '<div class="import-drop-zone" id="docxDropZone" onclick="document.getElementById(\'docxFileInput\').click()" ondragover="zoneDragOver(event,\'docxDropZone\')" ondragleave="zoneDragLeave(\'docxDropZone\')" ondrop="zoneFileDrop(event,\'docx\')">' +
+        '<strong>點擊選取 或 拖曳 .docx 檔案至此</strong>' +
+        '<p>支援 Word 表格雙軌格式</p>' +
+        '<input type="file" accept=".docx" id="docxFileInput" onchange="importDocxInput(event)" style="display:none">' +
+      '</div>' +
       '<div id="docxStatus" style="font-size:13px;color:#555;margin-top:8px"></div>' +
       '<div id="docxPreview" style="display:none;margin-top:10px"></div>' +
       '<div id="docxActions" style="display:none;margin-top:10px"></div>' +
@@ -1620,6 +1784,77 @@ function showImportModal(){
 }
 function switchTab(tab){ ['json','text','docx'].forEach(function(t){ var p=document.getElementById('panel-'+t),b=document.getElementById('tab-'+t); if(!p||!b)return; p.style.display=t===tab?'block':'none'; if(t===tab)b.classList.add('active');else b.classList.remove('active'); }); }
 function closeModal(e){ if(e.target.classList.contains('modal-bg')) document.getElementById('modalContainer').innerHTML=''; }
+
+// --- 匯入 modal 拖曳支援 ---
+function zoneDragOver(e, zoneId){
+  e.preventDefault(); e.stopPropagation();
+  var z = document.getElementById(zoneId); if(z) z.classList.add('drag-over');
+}
+function zoneDragLeave(zoneId){
+  var z = document.getElementById(zoneId); if(z) z.classList.remove('drag-over');
+}
+function zoneFileDrop(e, type){
+  e.preventDefault(); e.stopPropagation();
+  var zoneId = type==='json'?'jsonDropZone':type==='md'?'mdDropZone':'docxDropZone';
+  var z = document.getElementById(zoneId); if(z) z.classList.remove('drag-over');
+  var files = e.dataTransfer.files;
+  if(!files || !files.length) return;
+  var file = files[0];
+  if(type === 'json'){
+    var fakeEvt = {target:{files:[file]}};
+    importJSONFile(fakeEvt);
+  } else if(type === 'md'){
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var ta = document.getElementById('pasteImport');
+      if(ta){ ta.value = ev.target.result; showStatus('已載入：' + file.name, 1500); }
+    };
+    reader.readAsText(file, 'UTF-8');
+  } else if(type === 'docx'){
+    var fakeEvt2 = {target:{files:[file]}};
+    importDocxInput(fakeEvt2);
+  }
+}
+// 整個 modal 的拖曳：自動偵測檔案類型並切換頁簽
+function importModalDragOver(e){ e.preventDefault(); }
+function importModalDragLeave(e){}
+function importModalDrop(e){
+  e.preventDefault();
+  var files = e.dataTransfer.files;
+  if(!files || !files.length) return;
+  var file = files[0];
+  var ext = file.name.split('.').pop().toLowerCase();
+  if(ext === 'json'){
+    switchTab('json');
+    var fakeEvt = {target:{files:[file]}};
+    importJSONFile(fakeEvt);
+  } else if(ext === 'md' || ext === 'markdown' || ext === 'txt'){
+    switchTab('text');
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var ta = document.getElementById('pasteImport');
+      if(ta){ ta.value = ev.target.result; showStatus('已載入：' + file.name + '，可點「預覽解析」', 2000); }
+    };
+    reader.readAsText(file, 'UTF-8');
+  } else if(ext === 'docx'){
+    switchTab('docx');
+    var fakeEvt2 = {target:{files:[file]}};
+    importDocxInput(fakeEvt2);
+  } else {
+    showStatus('不支援的檔案格式：.' + ext, 2000);
+  }
+}
+// .md / .txt 檔案選取
+function importMdFile(e){
+  var file = e.target.files[0]; if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var ta = document.getElementById('pasteImport');
+    if(ta){ ta.value = ev.target.result; showStatus('已載入：' + file.name + '，可點「預覽解析」', 2000); }
+    e.target.value = '';
+  };
+  reader.readAsText(file, 'UTF-8');
+}
 
 function importJSONFile(e){
   var file=e.target.files[0]; if(!file)return;
